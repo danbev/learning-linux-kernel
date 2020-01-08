@@ -105,5 +105,25 @@ named `skb_buff` and can be found in [include/linux/skbuff.h](https://github.com
 
 Note that when you see something named `xmit` just read it as transmit. 
 
-
-
+### Raw sockets
+These sockets that give access to the packet as seen by the NIC, and that is not
+handled by the other network layers (L2, L3, and L4).
+```console
+$ docker run --privileged -ti -v$PWD:/root/ -w/root/ gcc /bin/bash
+$ gcc -o raw-socket raw-socket.c
+$ ./raw-socket
+```
+Execute a new process (container) in the same namespace:
+```console
+$ docker exec -ti d80c81eead6a /bin/bash
+$ curl www.google.com
+```
+And you will see the information printed in the other terminal.
+We can get information about the listening socket using `netstat`(needs to be
+installed using apt-get update && apt-get install net-tools):
+```console
+root@d80c81eead6a:~# netstat -l
+Active Internet connections (only servers)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State
+raw        0      0 0.0.0.0:tcp             0.0.0.0:*               7
+```
