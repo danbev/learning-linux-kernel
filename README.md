@@ -101,7 +101,7 @@ The device driver's top half will acknowledge the interrupt and then schedule
 the bottom half and then return.
 The device driver's bottom half will retreive the packet from the buffer where
 is was stored and allocate a new socket kernel buffer (SKB) which is a struct
-named `skb_buff` and can be found in [include/linux/skbuff.h)(https://github.com/torvalds/linux/blob/ae6088216ce4b99b3a4aaaccd2eb2dd40d473d42/include/linux/skbuff.h#L685)
+named `skb_buff` and can be found in [include/linux/skbuff.h](https://github.com/torvalds/linux/blob/ae6088216ce4b99b3a4aaaccd2eb2dd40d473d42/include/linux/skbuff.h#L685)
 
 Note that when you see something named `xmit` just read it as transmit. 
 
