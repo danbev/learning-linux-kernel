@@ -7,38 +7,69 @@ available from inside the kernel that are similar. For example, there is printk.
 The kernel stack is small and of fixed size which is configurable using a compile
 time option.
 
+### Processes
+A process is represented as a struct named [task_struct](https://github.com/torvalds/linux/blob/4a3033ef6e6bb4c566bd1d556de69b494d76976c/include/linux/sched.h#L629) which contains all the information that the kernel needs about the
+process like the processes address space, open files, pending signals, the state
+of the process, its virtual memory space, etc).
+
 
 ### Virtual Address Space
-Each process has its own virtual address space which looks something like
-the following:
+Each process has its own virtual address space and from the processes point of
+view it is the only process that exists.
+
+This address space looks something like the this:
 ```
-+-------------------------+ 2³²/2⁶⁴
-|                         |
-|  Kernel space           |
-|                         |
-|-------------------------|
-|                         |
-|  User space             |
-|                         |
-|                         |
-|                         |
-|                         |
-|                         |
-|                         |
-|                         |
-|                         |
-|                         |
-|                         |
-|                         |
-+-------------------------+ 0
+   +-------------------------+ 0xffffffff
+1GB|                         |
+   |  Kernel space           |
+   |                         |
+   |-------------------------| 0xc0000000 [TASK_SIZE](https://github.com/torvalds/linux/blob/4a3033ef6e6bb4c566bd1d556de69b494d76976c/arch/arm/include/asm/memory.h#L31)
+   |  User space             |
+   |-------------------------|
+   |  Stack segment          |
+   |          ↓              |
+   |-------------------------| esp (extended stack pointer)
+   |                         |
+   |-------------------------|
+   |  Memory Mapped Segment  |
+   |          ↓              |
+   |-------------------------|
+3GB|                         |
+   |                         |
+   |                         |
+   |                         |
+   |                         | program break
+   |-------------------------| [brk](https://github.com/torvalds/linux/blob/b07f636fca1c8fbba124b0082487c0b3890a0e0c/include/linux/mm_types.h#L451)
+   |          ↑              |
+   |  Heap segment           |
+   |                         |
+   |-------------------------| [start brk](https://github.com/torvalds/linux/blob/b07f636fca1c8fbba124b0082487c0b3890a0e0c/include/linux/mm_types.h#L451)
+   |  BSS segment            |
+   |                         |
+   |-------------------------| [end data](https://github.com/torvalds/linux/blob/b07f636fca1c8fbba124b0082487c0b3890a0e0c/include/linux/mm_types.h#L450)
+   |  Data segment           |
+   |                         | [start data](https://github.com/torvalds/linux/blob/b07f636fca1c8fbba124b0082487c0b3890a0e0c/include/linux/mm_types.h#L450)
+   |-------------------------| [end code](https://github.com/torvalds/linux/blob/b07f636fca1c8fbba124b0082487c0b3890a0e0c/include/linux/mm_types.h#L450)
+   |  Text segment           | 0x08048000
+   |                         |
+   +-------------------------+ 0
 ```
+Each process will have a virtual address space that goes from 0 to `TASK_SIZE`.
+The rest, from TASK_SIZE to 2³² or 2⁶⁴ is reserved for the kernel and is the
+same for each process.
+
+A process is represented by a `task_struct` (see details in the Processes section).
+Once of this fields is named [mm](https://github.com/torvalds/linux/blob/b07f636fca1c8fbba124b0082487c0b3890a0e0c/include/linux/sched.h#L732)
+and points to a [mm_struct](https://github.com/torvalds/linux/blob/b07f636fca1c8fbba124b0082487c0b3890a0e0c/include/linux/mm_types.h#L370).
+
 The kernel space is the same for each process, but user processes cannot read
 or write to the data in the kernel space, and not excecute code either.
 
-### Processes
-A process is represented as a struct named `task_struct` which contains all the
-information that the kernel needs about the process like the processes address
-space, open files, pending signals, the state of the process, etc).
+
+The resuse of the stack region tends to keep stack memory in the cpu caches which
+improves performance.
+
+
 
 
 ### Linked lists
