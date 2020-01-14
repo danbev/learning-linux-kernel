@@ -287,3 +287,41 @@ Active Internet connections (only servers)
 Proto Recv-Q Send-Q Local Address           Foreign Address         State
 raw        0      0 0.0.0.0:tcp             0.0.0.0:*               7
 ```
+
+
+### Memory layout
+```console
+$ gcc -c simple.c
+$ size simple.o
+ text	   data	    bss	    dec	    hex	filename
+   74	      0	      0	     74	     4a	simple.o
+root@c641a3216288:~# objdump -h simple.o
+
+simple.o:     file format elf64-x86-64
+
+Sections:
+Idx Name          Size      VMA               LMA               File off  Algn
+  0 .text         00000012  0000000000000000  0000000000000000  00000040  2**0
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .data         00000000  0000000000000000  0000000000000000  00000052  2**0
+                  CONTENTS, ALLOC, LOAD, DATA
+  2 .bss          00000000  0000000000000000  0000000000000000  00000052  2**0
+                  ALLOC
+  3 .comment      00000012  0000000000000000  0000000000000000  00000052  2**0
+                  CONTENTS, READONLY
+  4 .note.GNU-stack 00000000  0000000000000000  0000000000000000  00000064  2**0
+                  CONTENTS, READONLY
+  5 .eh_frame     00000038  0000000000000000  0000000000000000  00000068  2**3
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, DATA
+```
+Virtual Memory Address (VMA) is the address the section will have when the output
+object file is executed. It is zero now because we have not linked it into an
+executable yet.
+Load Memory Address (LMA) is the address into which the section will be loaded.
+This is most often the same but can be different in some situations.
+
+Now, if we link this into an executable we can compare:
+```console
+$ l
+```
+
