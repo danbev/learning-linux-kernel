@@ -111,6 +111,135 @@ TODO: add from notes.
 This section will take a closer look at how a packet moves through the system.
 We will start by looking at an incoming TCP/IP v4 packet.
 
+During the boot process at some point [inet_init](https://github.com/torvalds/linux/blob/bef1d88263ff769f15aa0e1515cdcede84e61d15/net/ipv4/af_inet.c#L1909) is called. There is the following line:
+```c
+fs_initcall(inet_init);
+```
+[fs_initcall](https://github.com/torvalds/linux/blob/bef1d88263ff769f15aa0e1515cdcede84e61d15/include/linux/init.h#L226)
+is a macro which looks like this:
+```c
+#define fs_initcall(fn) _define_initcall(fn, 5)
+
+#define __define_initcall(fn, id) ___define_initcall(fn, id, .initcall##id)
+
+#define ___define_initcall(fn, id, __sec) \
+	static initcall_t __initcall_##fn##id __used \
+		__attribute__((__section__(#__sec ".init"))) = fn;
+#endif
+```
+So the preprocessor would expand this into something like:
+```c
+static initcall_t __initcall_inet_init5 __used __attribute__((__section__(.initcall5 ".init"))) = inet_init;
+```
+During linking the GNU linker will use a linkerscript, which is text file with
+commands which describes how the sections in the input object files should be
+mapped to the output file. There is a default linker script if you don't specify
+one and it can be viewed using `ldd --verbose`.
+
+```console
+$ docker run --privileged -ti -v$PWD:/root/ -w/root/ gcc /bin/bash
+```
+We are going to compile and assemble but not link:
+```console
+$ gcc -c linkerscript.c
+```
+$ ld -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 /usr/lib/x86_64-linux-gnu/crt1.o /usr/lib/x86_64-linux-gnu/crti.o -lc linkerscript.o /usr/lib/x86_64-linux-gnu/crtn.o
+```
+`crt1.o`, `crti.o`, and `crtn.o` are object files that make up the C Run Time (CRT).
+`crt1.o` provides the `_start` symbol that the ld jumps to, and it also responsible
+for calling `main()`, and later for calling `exit()`.
+`crti.o` (c runtime init) contains the prologue section `.init`.
+`crtn.o` contains the epilogue section `.fini`.
+
+
+
+
+`inet_init` does things like register protocol handlers, for example it calls
+[dev_add_pack(&ip_packet_type](https://github.com/torvalds/linux/blob/bef1d88263ff769f15aa0e1515cdcede84e61d15/net/ipv4/af_inet.c#L2018)
+where ip_packet type looks like this:
+```c
+static struct packet_type ip_packet_type __read_mostly = {
+	.type = cpu_to_be16(ETH_P_IP),
+	.func = ip_rcv,
+	.list_func = ip_list_rcv,
+};
+```
+Notice that `.func` is being set to `ip_rcv`. This is the handler for all IPv4
+packets.
+```
++--------------------------------------------------------------------------+
+|                      Network Driver                                      |
++--------------------------------------------------------------------------+
+     |
+     ↓
++-----------------------+
+| ip_rcv()              |
++-----------------------+
+     |
+     ↓
++-----------------------+
+| NF_INET_PRE_ROUTING   |
+| raw->ct->magle->dnat  |
++-----------------------+
+     |
+     ↓
++-----------------------+    +------------------+
+| ip_rcv_finish()       |--->| Routing Subsystem|
++-----------------------+    +------------------+
+                                       |
+                                       ↓
+                             +------------------+
+                             |ip_local_deliver()|
+                             +------------------+
+                                       |
+                                       ↓
+                             +------------------+
+                             |NF_INET_LOCAL_IN  |
+                             |mangle->filter->  |
+                             |security->snat    |
+                             +------------------+
+                                       |
+                                       ↓
+                             +-------------------------+
+                             |ip_local_deliver_finish()|
+                             +-------------------------+
+                                       |
+                                       ↓
++--------------------------------------------------------------------------+
+|                      Transport Layer                                     |
++--------------------------------------------------------------------------+
+
+```
+`NF` stands for Netfilter which is the subsystem for iptables, so these are
+callouts/hooks for various stages in the processing of packages.
+`mangle` is for modifying packet attributes (like ttl for example).
+`ct` above stands for `connection tracking (conntrack/CT) and is not a chain
+but iptables is a stateful firewal and is tracks the state of the connection.
+
+There are 5 hooks, `PRE_ROUTING`, `INPUT`, `FORWARD`, `OUTPUT`, and `POST_ROUTING`.
+Rules can be added to all of these hooks and the rules are organized using chains
+for different purposes
+
+Lets take a look at the first one so that we understand how these work. ip_rcv
+calls NF_HOOK as the last thing it does:
+```c
+return NF_HOOK(NFPROTO_IPV4, NF_INET_PRE_ROUTING,
+	       net, NULL, skb, dev, NULL,
+	       ip_rcv_finish);
+```
+[NF_HOOK](https://github.com/torvalds/linux/blob/bef1d88263ff769f15aa0e1515cdcede84e61d15/include/linux/netfilter.h#L300)
+```c
+static inline int NF_HOOK(uint8_t pf,
+                          unsigned int hook,
+                          struct net *net,
+                          struct sock *sk,
+                          struct sk_buff *skb,
+	                  struct net_device *in,
+                          struct net_device *out,
+	                  int (*okfn)(struct net *, struct sock *, struct sk_buff *);
+```
+
+
 An incoming (ingress) packet arrives on the network interface card (NIC):
 ```
 +------------------+--------------+---------------+--------+----------------+
