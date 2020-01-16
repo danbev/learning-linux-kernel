@@ -97,6 +97,9 @@ improves performance.
 
 
 
+### Memory Management Unit (MMU)
+The memory management unit is a physical component, as I understand it most often
+on the CPU itself. 
 
 ### Linked lists
 Normally if a struct is to become part of a linked list we would store a
@@ -240,11 +243,14 @@ packets.
 callouts/hooks for various stages in the processing of packages.
 `mangle` is for modifying packet attributes (like ttl for example).
 `ct` above stands for `connection tracking (conntrack/CT) and is not a chain
-but iptables is a stateful firewal and is tracks the state of the connection.
+but iptables is a stateful firewal and is tracks the state of the connection. The
+states can be `NEW`, `ESTABLISHED`, `RELATED`, `INVALID`, `UNTRACKED`,
+`DNAT` (a packets whose dest address was changed by rules in the nat table),
+`SNAT` (similar to DNAT but for src address).
 
 There are 5 hooks, `PRE_ROUTING`, `INPUT`, `FORWARD`, `OUTPUT`, and `POST_ROUTING`.
 Rules can be added to all of these hooks and the rules are organized using chains
-for different purposes
+for different. 
 
 Lets take a look at the first one so that we understand how these work. ip_rcv
 calls NF_HOOK as the last thing it does:
@@ -345,9 +351,166 @@ object file is executed. It is zero now because we have not linked it into an
 executable yet.
 Load Memory Address (LMA) is the address into which the section will be loaded.
 This is most often the same but can be different in some situations.
+`.eh_frame` is an exception frame and contains one or more Call Frame Information
+(CFI) records. This is used for stack unwinding and other things.
 
 Now, if we link this into an executable we can compare:
 ```console
-$ l
+$ objdump -h simple
+
 ```
 
+### mmap (sys/mman.h)
+Is a call that creates a new mapping in the virtual address space of the calling
+process. [mmap.c](./mmap.c) is an example of the usage of this function call.
+
+
+### Program startup
+While our c programs have a main function that is considered the entry point,
+the realy entry point is specified by the linker, either via the `-e` flag or
+perhaps in the linkerscript.
+libc
+
+```console
+$ objdump -f simple
+
+simple:     file format elf64-x86-64
+architecture: i386:x86-64, flags 0x00000112:
+EXEC_P, HAS_SYMS, D_PAGED
+start address 0x0000000000401020
+````
+So we dissassemble and see what exists at `0x0000000000401020`:
+```console
+$ objdump -d simple
+Disassembly of section .text:
+
+0000000000401020 <_start>:
+  401020:	31 ed                	xor    %ebp,%ebp
+  401022:	49 89 d1             	mov    %rdx,%r9
+  401025:	5e                   	pop    %rsi
+  401026:	48 89 e2             	mov    %rsp,%rdx
+  401029:	48 83 e4 f0          	and    $0xfffffffffffffff0,%rsp
+  40102d:	50                   	push   %rax
+  40102e:	54                   	push   %rsp
+  40102f:	49 c7 c0 80 11 40 00 	mov    $0x401180,%r8
+  401036:	48 c7 c1 20 11 40 00 	mov    $0x401120,%rcx
+  40103d:	48 c7 c7 02 11 40 00 	mov    $0x401102,%rdi
+  401044:	ff 15 a6 2f 00 00    	callq  *0x2fa6(%rip)        # 403ff0 <__libc_start_main@GLIBC_2.2.5>
+  40104a:	f4                   	hlt
+  40104b:	0f 1f 44 00 00       	nopl   0x0(%rax,%rax,1)
+```
+The first instruction, `xor %ebp, %ebp` is just clearing the %ebp register (setting
+it to zero:
+```
+ 101
+^101
+----
+ 000
+```
+Now before we look into this just recall that on x86_64 the registers used for
+passing parameters are this following:
+```
+1: rdi
+2: rsi
+3: rdx
+4: rcx
+5: r8
+6: r9
+```
+Also remember that `objdump` by default outputs assembly in AT&T syntax so the first
+operand in the instructions above is the source and the second is the destination.
+```console
+  401022:	49 89 d1             	mov    %rdx,%r9
+```
+So we are moving the current value in rdx into r9, which we know can be used
+as argument (nr 6) of a function call.
+```console
+  401025:	5e                   	pop    %rsi
+```
+This operation will take the topmost value of the stack and store it in rsi (second argument).
+```console
+  401026:	48 89 e2             	mov    %rsp,%rdx
+```
+We now move the current stack pointer into rdx (third argument).
+```console
+  401029:	48 83 e4 f0          	and    $0xfffffffffffffff0,%rsp
+  40102d:	50                   	push   %rax
+  40102e:	54                   	push   %rsp
+```
+```console
+  40102f:	49 c7 c0 80 11 40 00 	mov    $0x401180,%r8
+```
+So this is moving the value `0x401180` into r8 (the fifth argument).
+This is `__libc_csu_fini`:
+```console
+0000000000401180 <__libc_csu_fini>:
+  401180:	c3                   	retq
+```
+Next, we have 
+```console
+  401036:	48 c7 c1 20 11 40 00 	mov    $0x401120,%rcx
+```
+Which is moving the value `0x401120` into rcx which is the fourth argument.
+This is 
+```console
+0000000000401120 <__libc_csu_init>:
+...
+```
+Next we have:
+```console
+  40103d:	48 c7 c7 02 11 40 00 	mov    $0x401102,%rdi
+```
+Which is moving the value `0x401102` into rdi (the first argument):
+```console
+0000000000401102 <main>:
+...
+```
+So all of that was setting up the arguments to fall `__libc_start_main` which
+has a signtur of:
+```console
+int __libc_start_main(int *(main) (int, char * *, char * *),
+                      int argc,
+                      char** ubp_av,
+                      void (*init) (void),
+                      void (*fini) (void),
+                      void (*rtld_fini) (void),
+                      void (* stack_end));
+```
+The actual call look like this:
+```console
+  401044:	ff 15 a6 2f 00 00    	callq  *0x2fa6(%rip)        # 403ff0 <__libc_start_main@GLIBC_2.2.5>
+```
+
+
+
+I'm not sure %rdx contains at this point, but it might just be that it will be
+used later and it the value is stored and will later be restored.
+
+Next, the current value on the stack is saved in rsi. So this would be the
+instruction pointer.
+
+Next, we move the stack pointer into the rdx registry.
+```
++-----------+
+|           |
+
+```
+
+
+
+
+
+### bytes
+```
+2⁰  = 1
+2¹  = 2
+2²  = 4
+2³  = 8
+2⁴  = 16
+2⁵  = 32
+2⁶  = 64
+2⁷  = 128
+2⁸  = 256
+2⁹  = 512
+2¹⁰ = 1024
+```
