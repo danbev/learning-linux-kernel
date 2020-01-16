@@ -1,2 +1,7 @@
 list
 raw-socket
+test
+mmap
+simple
+a.out
+*.o
