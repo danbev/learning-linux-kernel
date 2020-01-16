@@ -56,11 +56,37 @@ This address space looks something like the this:
 ```
 Each process will have a virtual address space that goes from 0 to `TASK_SIZE`.
 The rest, from TASK_SIZE to 2³² or 2⁶⁴ is reserved for the kernel and is the
-same for each process.
+same for each process. So, while the Kernel space is the same for each process
+the user address space will be different. 
+
+Let's take a look at a virtual address, for example the following:
+```
+Virtual address: 0x00003204
+```
+Part of this address will be a virtual page number (VPN) and part of it will
+be a page offset:
+```
+31                                 12 11
++------------------------------------------------------+
+|     0x0003                         |   0x204         |
++------------------------------------------------------+
+```
+The Memory Management Unit (MMU), which is a hardware component, manages virtual
+addresses by mapping virtual addresses to physical addresses.
+The unit the MMU operate with is a `page`. The size can vary but lets say it is
+4 KB. A page frame is the physical page.
+
+Think about when a process gets created, memory will be mapped in to the processes
+virtual address space. Like the code segment, each entry in the code segment is
+addressable using a virtual address which is mapped to a physical address. A
+different process could have the same virtual address but it would not be mapped
+to the same physical address.  
+
 
 A process is represented by a `task_struct` (see details in the Processes section).
 Once of this fields is named [mm](https://github.com/torvalds/linux/blob/b07f636fca1c8fbba124b0082487c0b3890a0e0c/include/linux/sched.h#L732)
 and points to a [mm_struct](https://github.com/torvalds/linux/blob/b07f636fca1c8fbba124b0082487c0b3890a0e0c/include/linux/mm_types.h#L370).
+
 
 The kernel space is the same for each process, but user processes cannot read
 or write to the data in the kernel space, and not excecute code either.
