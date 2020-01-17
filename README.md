@@ -370,6 +370,52 @@ While our c programs have a main function that is considered the entry point,
 the realy entry point is specified by the linker, either via the `-e` flag or
 perhaps in the linkerscript.
 libc
+```console
+$ gcc -o simple simple.c
+```
+Just to be clear about one thing, this will be a dynamically linked executable
+since we did not specify the `-static` flag. 
+```console
+$ ldd simple
+	linux-vdso.so.1 (0x00007fff46456000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007fe7097dc000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007fe7099a9000)
+```
+`vsdo` is a virtual library (notice that it is not associated with a file) that
+is automatically mapped in the virtual address space of a process by the kernel.
+This is a virtual dynamic shared object (vdso) and is a small library that the
+kernel maps into the virtual address space of all user processes. The motivation
+for this is that there are some system calls that are used very often, enough
+to cause a performace issue with having to switch into kernel mode. An example
+of a frequently called function is gettimeofday which can be called directly from 
+user code and also is called from the c library. This library can be found using
+the auxiliary vectors which is a mechanism to transfer some kernel level info
+to the user process. This info is passed by binary loaders. The ELF loader parses
+the ELF file and maps the various segments into the processes virtual address space
+, sets up the entry point, and initializes the process stack.
+
+When we run `./simple` how does the kernel know how to handle this?  
+In my case I'm using the bash shell, which is also just program running on the
+system. bash does some initial setup and then enters a read loop where is wait
+for commands and executes them as they are entered. This will eventually call
+`execve(command, args, env)`:
+```c
+int execve(const char *filename, char *const argv [], char *const envp[]);
+```
+We can find the implmentation of [execve](https://github.com/torvalds/linux/blob/575966e080270b7574175da35f7f7dd5ecd89ff4/fs/exec.c#L1878)
+in fs/exec.c.
+
+We can use `strace` to see this for our example:
+```console
+$ strace ./simple non-used-arg
+execve("./simple", ["./simple", "non-used-arg"], 0x7ffe36115288 /* 10 vars */) = 0
+```
+So to answer the question, it is the bash shell that calls execve. For some reason
+that was not clear to be before.
+
+
+
+`libc` is the c library and `ld-linux-x86_64` is the dynamic linker.
 
 ```console
 $ objdump -f simple
