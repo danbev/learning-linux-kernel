@@ -412,8 +412,32 @@ execve("./simple", ["./simple", "non-used-arg"], 0x7ffe36115288 /* 10 vars */) =
 ```
 So to answer the question, it is the bash shell that calls execve. For some reason
 that was not clear to be before.
+Take a look at [load_elf_binary](https://github.com/torvalds/linux/blob/575966e080270b7574175da35f7f7dd5ecd89ff4/fs/binfmt_elf.c#L681)
+for details on the loading. This function will inspect the elf program header
+and look for an `INTERPR` header. which is our case is:
+```console
+readelf -l simple
 
+Elf file type is EXEC (Executable file)
+Entry point 0x401020
+There are 11 program headers, starting at offset 64
 
+Program Headers:
+  Type           Offset             VirtAddr           PhysAddr
+                 FileSiz            MemSiz              Flags  Align
+  PHDR           0x0000000000000040 0x0000000000400040 0x0000000000400040
+                 0x0000000000000268 0x0000000000000268  R      0x8
+  INTERP         0x00000000000002a8 0x00000000004002a8 0x00000000004002a8
+                 0x000000000000001c 0x000000000000001c  R      0x1
+      [Requesting program interpreter: /lib64/ld-linux-x86-64.so.2]
+```
+When the interpreter is run it will call the .init section, do the table relocations,
+and then return control back to `load_elf_binary`. More details of the linker 
+and these tables can be found below.
+Keep in mind that the `execve` call will replace the current/calling processes virtual
+address space, so one everything has been step up, the next instruction pointed to
+by rpi will be executed. I was first thinking that something would be calling
+our main function but that does not really seem to be how it works.
 
 `libc` is the c library and `ld-linux-x86_64` is the dynamic linker.
 
@@ -537,6 +561,53 @@ current instruction pointer, which could then be used by the caller.
 The `*` means that this is an absolute jump call (not a relative one). 
 TODO: double check the above as I'm a little unsure about this.
 
+So we have
+```console
+  401044:	ff 15 a6 2f 00 00    	callq  *0x2fa6(%rip)        # 403ff0 <__libc_start_main@GLIBC_2.2.5>
+```
+
+```console
+$ readelf -W --sections simple
+There are 27 section headers, starting at offset 0x3850:
+
+Section Headers:
+  [Nr] Name              Type            Address          Off    Size   ES Flg Lk Inf Al
+  [ 0]                   NULL            0000000000000000 000000 000000 00      0   0  0
+  [ 1] .interp           PROGBITS        00000000004002a8 0002a8 00001c 00   A  0   0  1
+  [ 2] .note.ABI-tag     NOTE            00000000004002c4 0002c4 000020 00   A  0   0  4
+  [ 3] .hash             HASH            00000000004002e8 0002e8 000018 04   A  5   0  8
+  [ 4] .gnu.hash         GNU_HASH        0000000000400300 000300 00001c 00   A  5   0  8
+  [ 5] .dynsym           DYNSYM          0000000000400320 000320 000048 18   A  6   1  8
+  [ 6] .dynstr           STRTAB          0000000000400368 000368 000038 00   A  0   0  1
+  [ 7] .gnu.version      VERSYM          00000000004003a0 0003a0 000006 02   A  5   0  2
+  [ 8] .gnu.version_r    VERNEED         00000000004003a8 0003a8 000020 00   A  6   1  8
+  [ 9] .rela.dyn         RELA            00000000004003c8 0003c8 000030 18   A  5   0  8
+  [10] .init             PROGBITS        0000000000401000 001000 000017 00  AX  0   0  4
+  [11] .text             PROGBITS        0000000000401020 001020 000161 00  AX  0   0 16
+  [12] .fini             PROGBITS        0000000000401184 001184 000009 00  AX  0   0  4
+  [13] .rodata           PROGBITS        0000000000402000 002000 000004 04  AM  0   0  4
+  [14] .eh_frame_hdr     PROGBITS        0000000000402004 002004 000034 00   A  0   0  4
+  [15] .eh_frame         PROGBITS        0000000000402038 002038 0000d8 00   A  0   0  8
+  [16] .init_array       INIT_ARRAY      0000000000403e40 002e40 000008 08  WA  0   0  8
+  [17] .fini_array       FINI_ARRAY      0000000000403e48 002e48 000008 08  WA  0   0  8
+  [18] .dynamic          DYNAMIC         0000000000403e50 002e50 0001a0 10  WA  6   0  8
+  [19] .got              PROGBITS        0000000000403ff0 002ff0 000010 08  WA  0   0  8
+  [20] .got.plt          PROGBITS        0000000000404000 003000 000018 08  WA  0   0  8
+```
+0x2fa6 + %rip is 403ff0 and we can find this in the .got section of the headers.
+
+```console
+$ readelf -W -r simple
+
+Relocation section '.rela.dyn' at offset 0x3c8 contains 2 entries:
+  Offset          Info           Type           Sym. Value    Sym. Name + Addend
+000000403ff0  000100000006 R_X86_64_GLOB_DAT 0000000000000000 __libc_start_main@GLIBC_2.2.5 + 0
+```
+R_X86_64_GLOB_DAT tells the dynamic linker to find the value of symbol __libc__start_main@BLIBC_2.2.5
+and put that value into address 000000403ff0 which is the address that will be use
+in the callq operation.
+
+
 ```console
 objdump -R simple
 
@@ -556,7 +627,10 @@ Type           Offset             Virtual Address    Physical Address    File Si
 INTERP         0x00000000000002a8 0x00000000004002a8 0x00000000004002a8  0x000000000000001c 0x000000000000001c  R       0x1
       [Requesting program interpreter: /lib64/ld-linux-x86-64.so.2]
 ...
-```
+TODO: take a closer look at https://github.com/torvalds/linux/blob/master/fs/binfmt_elf.c
+and see how this works.```
+
+
 ```console
 You can actually run this program directly. 
 $ /lib64/ld-linux-x86-64.so.2 --list /lib/x86_64-linux-gnu/libc.so.6
@@ -567,6 +641,19 @@ $ /lib64/ld-linux-x86-64.so.2 --list /lib/x86_64-linux-gnu/libc.so.6
 The kernel call this somehow and it will loads the shared library passed to it
 if needed (if they were not already available in memory that is). The linker
 will then perform the relocations for the executable we want to run.
+The is a [linux_binfmt](https://github.com/torvalds/linux/blob/575966e080270b7574175da35f7f7dd5ecd89ff4/fs/binfmt_elf.c#L92) 
+struct which contains a function to load libraries:
+```c
+static struct linux_binfmt elf_format = {
+	.module		= THIS_MODULE,
+	.load_binary	= load_elf_binary,
+	.load_shlib	= load_elf_library,
+	.core_dump	= elf_core_dump,
+	.min_coredump	= ELF_EXEC_PAGESIZE,
+};
+```
+
+
 Relocations happen for data and for functions and there is a level of indirection
 here. The indirection has to do with (perhaps others as well) that we don't want
 to make the code segment writable, if it is writable it cannot be shared by other
@@ -584,6 +671,51 @@ After the `.init` section has been run the linker gives control back to the
 image being loaded.
 
 Notice that
+```console
+$ objdump -T  -d simple
+
+simple:     file format elf64-x86-64
+
+DYNAMIC SYMBOL TABLE:
+0000000000000000      DF *UND*	0000000000000000  GLIBC_2.2.5 __libc_start_main
+0000000000000000  w   D  *UND*	0000000000000000              __gmon_start__
+```
+So, I'm still trying to figure out how the following line works:
+```console
+  401044:	ff 15 a6 2f 00 00    	callq  *0x2fa6(%rip)        # 403ff0 <__libc_start_main@GLIBC_2.2.5>
+```
+We are calling a function in the libc library which is in a dynamically linked
+library so this would have to be resolved by the linker. But like mentioned
+the code section is not writable to we use a table that will be "patched" at
+load/runtime by the linker. And this is a function call so this would involve
+the Procedure Linkage Table
+
+
+```console
+Disassembly of section .init:
+
+0000000000401000 <_init>:
+  401000:	48 83 ec 08          	sub    $0x8,%rsp
+  401004:	48 8b 05 ed 2f 00 00 	mov    0x2fed(%rip),%rax        # 403ff8 <__gmon_start__>
+  40100b:	48 85 c0             	test   %rax,%rax
+  40100e:	74 02                	je     401012 <_init+0x12>
+  401010:	ff d0                	callq  *%rax
+  401012:	48 83 c4 08          	add    $0x8,%rsp
+  401016:	c3                   	retq
+```
+If I'm reading this correctly we are moving/copying the address of 0x2fed(%rip)
+into rax. This should be a function named __gmon_start__ if enabled/specified/exists.
+We then test is rax is zero (test is done instead of cmp beacuse it is shorter I think),
+and if zero we jump to 401012 <_init+0x12>, otherwise we call __gmon_start__.
+```
+
+
+Disassembly of section .text:
+
+0000000000401020 <_start>:
+  401020:	31 ed                	xor    %ebp,%ebp
+  401022:	49 89 d1             	mov    %rdx,%r9
+```
 
 
 
