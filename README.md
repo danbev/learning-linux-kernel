@@ -445,6 +445,7 @@ Disassembly of section .text:
   40104a:	f4                   	hlt
   40104b:	0f 1f 44 00 00       	nopl   0x0(%rax,%rax,1)
 ```
+Notice that our start address is for the `_start_` label (and not our main function).
 The first instruction, `xor %ebp, %ebp` is just clearing the %ebp register (setting
 it to zero:
 ```
@@ -526,21 +527,63 @@ The actual call look like this:
 ```console
   401044:	ff 15 a6 2f 00 00    	callq  *0x2fa6(%rip)        # 403ff0 <__libc_start_main@GLIBC_2.2.5>
 ```
+Notice that this is (%rip). The parentheses means that this is a memory address
+which is used as a base register, and we are using the value in 0x2fa6).
+I think this is the same as writing `%rpb + 0x2fa6`. This type of addressing
+relative to the instruction pointer was not possible in 32 bit systems if I understand
+things correctly, in those one would have to dump to a label and there push the
+current instruction pointer, which could then be used by the caller.
 
+The `*` means that this is an absolute jump call (not a relative one). 
+TODO: double check the above as I'm a little unsure about this.
 
+```console
+objdump -R simple
 
-I'm not sure %rdx contains at this point, but it might just be that it will be
-used later and it the value is stored and will later be restored.
+simple:     file format elf64-x86-64
 
-Next, the current value on the stack is saved in rsi. So this would be the
-instruction pointer.
-
-Next, we move the stack pointer into the rdx registry.
+DYNAMIC RELOCATION RECORDS
+OFFSET           TYPE              VALUE
+0000000000403ff0 R_X86_64_GLOB_DAT  __libc_start_main@GLIBC_2.2.5
+0000000000403ff8 R_X86_64_GLOB_DAT  __gmon_start__
 ```
-+-----------+
-|           |
-
+When an ELF executable is run the kernel will read the ELF image into the users
+virtual address space. The kernel will look for a section called `.interp`:
+```console
+$ readelf -l simple
+Program Headers:
+Type           Offset             Virtual Address    Physical Address    File Size          Mem Size            Flags   Align
+INTERP         0x00000000000002a8 0x00000000004002a8 0x00000000004002a8  0x000000000000001c 0x000000000000001c  R       0x1
+      [Requesting program interpreter: /lib64/ld-linux-x86-64.so.2]
+...
 ```
+```console
+You can actually run this program directly. 
+$ /lib64/ld-linux-x86-64.so.2 --list /lib/x86_64-linux-gnu/libc.so.6
+	/lib64/ld-linux-x86-64.so.2 (0x00007f2a4e02d000)
+	linux-vdso.so.1 (0x00007fff57d4d000)
+```
+
+The kernel call this somehow and it will loads the shared library passed to it
+if needed (if they were not already available in memory that is). The linker
+will then perform the relocations for the executable we want to run.
+Relocations happen for data and for functions and there is a level of indirection
+here. The indirection has to do with (perhaps others as well) that we don't want
+to make the code segment writable, if it is writable it cannot be shared by other
+executables meaning that would have to include the code segment in their virtual
+address spaces. Instead, we can use a pointer to a mapping in the data section
+(which is writable) where we have this mapping. These mapping are called tables
+and there is one for functions named Procedure Linkage Table (PLT) and one for
+variables/data named Global Offset Table (GOT).
+
+After the linker has completed (the tables have been updated) it allows any 
+loaded shared object optionally run some initialization code. This code is what
+the `.init` section if for. Likewise, when the library is unloaded terminiation
+code can be run and this is found in the `.fini` section.
+After the `.init` section has been run the linker gives control back to the
+image being loaded.
+
+Notice that
 
 
 
