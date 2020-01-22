@@ -735,3 +735,24 @@ Disassembly of section .text:
 2⁹  = 512
 2¹⁰ = 1024
 ```
+### Compiling the kernel
+You can start copying an existing configuration:
+```console
+$ cp -v /boot/config-$(uname -r) .config
+'/boot/config-4.18.0-80.1.2.el8_0.x86_64' -> '.config'
+```
+You might need to install the following:
+```console
+$ sudo yum group install "Development Tools"
+$ yum install ncurses-devel bison flex elfutils-libelf-devel openssl-devel
+```
+
+Make configuration changes:
+```console
+$ make menuconfig
+```
+
+Buiding
+```console
+$ make -j8 
+```
