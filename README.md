@@ -367,7 +367,7 @@ process. [mmap.c](./mmap.c) is an example of the usage of this function call.
 
 ### Program startup
 While our c programs have a main function that is considered the entry point,
-the realy entry point is specified by the linker, either via the `-e` flag or
+the real entry point is specified by the linker, either via the `-e` flag or
 perhaps in the linkerscript.
 libc
 ```console
@@ -411,7 +411,7 @@ $ strace ./simple non-used-arg
 execve("./simple", ["./simple", "non-used-arg"], 0x7ffe36115288 /* 10 vars */) = 0
 ```
 So to answer the question, it is the bash shell that calls execve. For some reason
-that was not clear to be before.
+that was not clear to me before.
 Take a look at [load_elf_binary](https://github.com/torvalds/linux/blob/575966e080270b7574175da35f7f7dd5ecd89ff4/fs/binfmt_elf.c#L681)
 for details on the loading. This function will inspect the elf program header
 and look for an `INTERPR` header. which is our case is:
@@ -434,10 +434,13 @@ Program Headers:
 When the interpreter is run it will call the .init section, do the table relocations,
 and then return control back to `load_elf_binary`. More details of the linker 
 and these tables can be found below.
+
 Keep in mind that the `execve` call will replace the current/calling processes virtual
-address space, so one everything has been step up, the next instruction pointed to
-by rpi will be executed. I was first thinking that something would be calling
-our main function but that does not really seem to be how it works.
+address space, so once everything has been step up, the next instruction pointed to
+by rip will be executed. The should be set to the entry point. TODO: verify
+how this is done.
+I was first thinking that something would be calling our main function but that
+does not really seem to be how it works.
 
 `libc` is the c library and `ld-linux-x86_64` is the dynamic linker.
 
@@ -536,8 +539,8 @@ Which is moving the value `0x401102` into rdi (the first argument):
 0000000000401102 <main>:
 ...
 ```
-So all of that was setting up the arguments to fall `__libc_start_main` which
-has a signtur of:
+So all of that was setting up the arguments to call `__libc_start_main` which
+has a signture of:
 ```console
 int __libc_start_main(int *(main) (int, char * *, char * *),
                       int argc,
@@ -627,6 +630,7 @@ Type           Offset             Virtual Address    Physical Address    File Si
 INTERP         0x00000000000002a8 0x00000000004002a8 0x00000000004002a8  0x000000000000001c 0x000000000000001c  R       0x1
       [Requesting program interpreter: /lib64/ld-linux-x86-64.so.2]
 ...
+```
 TODO: take a closer look at https://github.com/torvalds/linux/blob/master/fs/binfmt_elf.c
 and see how this works.```
 
