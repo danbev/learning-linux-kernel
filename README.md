@@ -437,10 +437,7 @@ and these tables can be found below.
 
 Keep in mind that the `execve` call will replace the current/calling processes virtual
 address space, so once everything has been step up, the next instruction pointed to
-by rip will be executed. The should be set to the entry point. TODO: verify
-how this is done.
-I was first thinking that something would be calling our main function but that
-does not really seem to be how it works.
+by rip will be executed. 
 
 `libc` is the c library and `ld-linux-x86_64` is the dynamic linker.
 
@@ -539,7 +536,7 @@ Which is moving the value `0x401102` into rdi (the first argument):
 0000000000401102 <main>:
 ...
 ```
-So all of that was setting up the arguments to call `__libc_start_main` which
+So all of that was setting up the arguments to call [__libc_start_main](https://sourceware.org/git/?p=glibc.git;a=blob;f=csu/libc-start.c;h=12468c5a89e24d47872a2aea5dbe0e7287cca527;hb=HEAD#l111) which
 has a signture of:
 ```console
 int __libc_start_main(int *(main) (int, char * *, char * *),
@@ -550,6 +547,7 @@ int __libc_start_main(int *(main) (int, char * *, char * *),
                       void (*rtld_fini) (void),
                       void (* stack_end));
 ```
+
 The actual call look like this:
 ```console
   401044:	ff 15 a6 2f 00 00    	callq  *0x2fa6(%rip)        # 403ff0 <__libc_start_main@GLIBC_2.2.5>
@@ -567,6 +565,14 @@ TODO: double check the above as I'm a little unsure about this.
 So we have
 ```console
   401044:	ff 15 a6 2f 00 00    	callq  *0x2fa6(%rip)        # 403ff0 <__libc_start_main@GLIBC_2.2.5>
+```
+
+`__libc_start_main` will do some things that I've not had time to look into
+but it will call our main function:
+```c
+result = main(argc, argv, __environ MAIN_AUXVEC_PARAM);
+...
+exit(result);
 ```
 
 ```console
@@ -760,3 +766,59 @@ Buiding
 ```console
 $ make -j8 
 ```
+### Readelf
+To print a section in hex:
+```console
+$ readelf -x ".gcc_except_table" objectfile
+```
+
+You can use `-W`/`--wide` option to show output that does not wrap.
+
+
+### Call Frame Information (cfi)
+This is a GNU AS extension to manage call frames.
+```console
+$ gcc -S -o simple.s -g simple.c
+```
+So since we are using gcc it will be the GNU assembler that will be used so
+the output will be in that format. 
+
+```
+        .file   "simple.c"                                                      
+        .text                                                                   
+        .globl  main                                                            
+        .type   main, @function                                                 
+main:                                                                           
+.LFB0:                                                                          
+        .cfi_startproc                                                          
+        pushq   %rbp                                                            
+        .cfi_def_cfa_offset 16                                                  
+        .cfi_offset 6, -16                                                      
+        movq    %rsp, %rbp                                                      
+        .cfi_def_cfa_register 6                                                 
+        movl    %edi, -4(%rbp)                                                  
+        movq    %rsi, -16(%rbp)                                                 
+        movl    $0, %eax                                                        
+        popq    %rbp                                                            
+        .cfi_def_cfa 7, 8                                                       
+        ret                                                                     
+        .cfi_endproc                                                            
+.LFE0:                                                                          
+        .size   main, .-main                                                    
+        .ident  "GCC: (GNU) 8.2.1 20180905 (Red Hat 8.2.1-3)"                   
+        .section        .note.GNU-stack,"",@progbits        
+```
+So we can see the 
+A local label is any symbol beginning with a certain local label prefix.
+For ELF systems the prefix is `.L`. We can see above that we have local labels
+named `.LFB0` 
+
+`.cfi_startproc` is used in the beginning of each function that should have
+an entry in the .eh_frame.
+
+```
+        pushq   %rbp                                                            
+        .cfi_def_cfa_offset 16                                                  
+```
+The call frame is identified by an address on the stack. We refer to this
+address as the Canonical Frame Address or CFA. Note that we pushed 
