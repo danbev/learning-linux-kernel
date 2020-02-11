@@ -172,6 +172,8 @@ We are going to compile and assemble but not link:
 ```console
 $ gcc -c linkerscript.c
 ```
+And then we will link using the following command:
+```console
 $ ld -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 /usr/lib/x86_64-linux-gnu/crt1.o /usr/lib/x86_64-linux-gnu/crti.o -lc linkerscript.o /usr/lib/x86_64-linux-gnu/crtn.o
 ```
 `crt1.o`, `crti.o`, and `crtn.o` are object files that make up the C Run Time (CRT).
