@@ -11,7 +11,7 @@ int main(void) {
   printf("_SC_PAGESIZE: %zu bytes\n", sc_pagesize);
  
   char* mem_area = mmap(NULL, // let the kernel choose the address
-                        pagesize, // lenght of the mapping
+                        pagesize, // length of the mapping
                         PROT_READ | PROT_WRITE,
                         MAP_ANONYMOUS | MAP_PRIVATE,
                         -1, // since this is an anonymous mapping fd is ignored
@@ -27,7 +27,7 @@ int main(void) {
   printf("mem_area address: %p\n", &mem_area);
   printf("mem_area content: %s\n", mem_area);
  
-  int unmap_result = munmap(mem_area, 1 << 10);
+  int unmap_result = munmap(mem_area, pagesize);
   if (unmap_result != 0 ) {
     perror("Could not munmap");
     return 1;
