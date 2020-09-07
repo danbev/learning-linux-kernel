@@ -6,6 +6,9 @@
 int main(void) {
   size_t pagesize = getpagesize();
   printf("System page size: %zu bytes\n", pagesize);
+
+  size_t sc_pagesize = (size_t)sysconf(_SC_PAGESIZE);
+  printf("_SC_PAGESIZE: %zu bytes\n", sc_pagesize);
  
   char* mem_area = mmap(NULL, // let the kernel choose the address
                         pagesize, // lenght of the mapping
