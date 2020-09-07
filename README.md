@@ -410,6 +410,9 @@ The mapping is not backed by any file and its contents are initialized to zero.
 With this value the `fd` argument is ignored but some implementations require
 `fd` to be `-1` so it is safest to use `-1`.
 
+#### MAP_NORESERVE
+Does not reserve swap space for this mapping. If there is no physical memory
+available writing will case a SIGSEGV.
 
 
 ### Program startup
