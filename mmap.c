@@ -7,9 +7,9 @@ int main(void) {
   size_t pagesize = getpagesize();
   printf("System page size: %zu bytes\n", pagesize);
  
-  char* mem_area = mmap(NULL,
-                        pagesize,
-                        PROT_READ | PROT_WRITE | PROT_EXEC,
+  char* mem_area = mmap(NULL, // let the kernel choose the address
+                        pagesize, // lenght of the mapping
+                        PROT_READ | PROT_WRITE,
                         MAP_ANONYMOUS | MAP_PRIVATE,
                         -1, // since this is an anonymous mapping fd is ignored
                         0); // likewise the offset should be zero in this case.

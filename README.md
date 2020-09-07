@@ -366,6 +366,51 @@ $ objdump -h simple
 Is a call that creates a new mapping in the virtual address space of the calling
 process. [mmap.c](./mmap.c) is an example of the usage of this function call.
 
+```c
+void *mmap(void *addr, size_t length, int prot, int flags,
+           int fd, off_t offset);
+```
+`addr` can be NULL in which case the kernel will choose the page-aligned address
+where this mapping will be created. If not null it is taken as a hint as to
+where to place this mapping. `length` specifies the length of the mapping.
+
+`prot` specifies the memory protection for the mapping and can be one of:
+```
+PROT_EXEC       may be executed 
+PROT_READ       may be read from
+PROT_WRITE      may be written to
+PROT_NONE       may not be accessed
+```
+So `PROT_NONE` strikes me as a little strange as what use is a mapping if it
+cannot be accessed?  
+These mappings can be useful to protect this memory region and later use it
+for smaller virtual mappings. These smaller regions could be handed out using
+the flag `MAP_FIXED` with an address that is part of the larger region (at least
+I think this is what it's for).
+
+
+`flags` indicates whether updates to this mapping are visible to other processes
+that have a mapping to the same region.
+
+#### MAP_SHARED
+Other processes with mapping to the same region in memory will be visible to
+those processes.
+
+#### MAP_SHARED_VALIDATE
+Same as MAP_SHARED but will validate the passed in flags and fail with an error
+of EOPNOTSUPP if an unknown flag is pased in.
+
+#### MAP_PRIVATE
+Updates to the mapping are not visible to other processes mapping to the same
+file. Only applicable to file mapped?
+
+
+#### MAP_ANONYMOUS
+The mapping is not backed by any file and its contents are initialized to zero.
+With this value the `fd` argument is ignored but some implementations require
+`fd` to be `-1` so it is safest to use `-1`.
+
+
 
 ### Program startup
 While our c programs have a main function that is considered the entry point,
