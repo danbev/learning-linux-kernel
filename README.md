@@ -23,7 +23,7 @@ This address space looks something like the this:
 1GB|                         |
    |  Kernel space           |
    |                         |
-   |-------------------------| 0xc0000000 <pre><a href="https://github.com/torvalds/linux/blob/4a3033ef6e6bb4c566bd1d556de69b494d76976c/arch/arm/include/asm/memory.h#L31">TASK_SIZE</a></pre>
+   |-------------------------| 0xc0000000 [TASK_SIZE](https://github.com/torvalds/linux/blob/4a3033ef6e6bb4c566bd1d556de69b494d76976c/arch/arm/include/asm/memory.h#L31)
    |  User space             |
    |-------------------------|
    |  Stack segment          |
