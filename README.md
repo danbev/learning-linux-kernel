@@ -23,7 +23,7 @@ This address space looks something like the this:
 1GB|                         |
    |  Kernel space           |
    |                         |
-   |-------------------------| 0xc0000000 [TASK_SIZE](https://github.com/torvalds/linux/blob/4a3033ef6e6bb4c566bd1d556de69b494d76976c/arch/arm/include/asm/memory.h#L31)
+   |-------------------------| 0xc0000000 <pre><a href="https://github.com/torvalds/linux/blob/4a3033ef6e6bb4c566bd1d556de69b494d76976c/arch/arm/include/asm/memory.h#L31">TASK_SIZE</a></pre>
    |  User space             |
    |-------------------------|
    |  Stack segment          |
@@ -75,6 +75,17 @@ The Memory Management Unit (MMU), which is a hardware component, manages virtual
 addresses by mapping virtual addresses to physical addresses.
 The unit the MMU operate with is a `page`. The size can vary but lets say it is
 4 KB. A page frame is the physical page.
+```
+                       Physical Memory
+                 +---------------------------+
+            4KB  |  PageFrame1: page content |
+                 +---------------------------+
+            4KB  |  PageFrame2: page content |
+                 +---------------------------+
+
+```
+So the MMU will always read/store units of page size, which go into the
+page frame in physical memory.
 
 Think about when a process gets created, memory will be mapped in to the processes
 virtual address space. Like the code segment, each entry in the code segment is
