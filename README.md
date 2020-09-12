@@ -95,7 +95,7 @@ to the same physical address.
 
 
 A process is represented by a `task_struct` (see details in the Processes section).
-Once of this fields is named [mm](https://github.com/torvalds/linux/blob/b07f636fca1c8fbba124b0082487c0b3890a0e0c/include/linux/sched.h#L732)
+One of its fields is named [mm](https://github.com/torvalds/linux/blob/b07f636fca1c8fbba124b0082487c0b3890a0e0c/include/linux/sched.h#L732)
 and points to a [mm_struct](https://github.com/torvalds/linux/blob/b07f636fca1c8fbba124b0082487c0b3890a0e0c/include/linux/mm_types.h#L370).
 
 
@@ -103,7 +103,7 @@ The kernel space is the same for each process, but user processes cannot read
 or write to the data in the kernel space, and not excecute code either.
 
 
-The resuse of the stack region tends to keep stack memory in the cpu caches which
+The reuse of the stack region tends to keep stack memory in the cpu caches which
 improves performance.
 
 
@@ -532,7 +532,7 @@ Disassembly of section .text:
 ```
 Notice that our start address is for the `_start_` label (and not our main function).
 The first instruction, `xor %ebp, %ebp` is just clearing the %ebp register (setting
-it to zero:
+it to zero):
 ```
  101
 ^101
