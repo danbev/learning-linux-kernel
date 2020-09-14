@@ -87,6 +87,10 @@ The unit the MMU operate with is a `page`. The size can vary but lets say it is
 So the MMU will always read/store units of page size, which go into the
 page frame in physical memory.
 
+Just to be clear on one things here. When we allocate memory with mmap what we
+get is a reservation of virtual memory, there is not physical memory allocated
+for this virutal memory yet.
+
 Think about when a process gets created, memory will be mapped in to the processes
 virtual address space. Like the code segment, each entry in the code segment is
 addressable using a virtual address which is mapped to a physical address. A
@@ -883,3 +887,88 @@ an entry in the .eh_frame.
 ```
 The call frame is identified by an address on the stack. We refer to this
 address as the Canonical Frame Address or CFA. Note that we pushed 
+
+### Memory
+When a call malloc, brk, sbrk, or mmap we are only reserving virtual memory
+and not physical RAM. The physical RAM will be used when a read/write occurs
+using a virtual address. This virtual address is passed to the MMU and it will
+a pagefault will occur as there will be not mapping from virtual address to the
+physical address. This case will be handled by the the
+
+```console
+$ lldb -- ./mmap 
+(lldb) br s -n main
+(lldb) r
+(lldb) platform shell ps -o pid,user,vsz,rss,comm,args 213047
+    PID USER        VSZ   RSS COMMAND         COMMAND
+ 213047 danielb+   2196   776 mmap            /home/danielbevenius/work/linux/learning-linux-kernel/mmap
+(lldb) platform shell pmap 213047
+213047:   /home/danielbevenius/work/linux/learning-linux-kernel/mmap
+0000000000400000      4K r---- mmap
+0000000000401000      4K r-x-- mmap
+0000000000402000      4K r---- mmap
+0000000000403000      4K r---- mmap
+0000000000404000      4K rw--- mmap
+00007ffff7dde000    148K r---- libc-2.30.so
+00007ffff7e03000   1340K r-x-- libc-2.30.so
+00007ffff7f52000    296K r---- libc-2.30.so
+00007ffff7f9c000      4K ----- libc-2.30.so
+00007ffff7f9d000     12K r---- libc-2.30.so
+00007ffff7fa0000     12K rw--- libc-2.30.so
+00007ffff7fa3000     24K rw---   [ anon ]
+00007ffff7fcb000     16K r----   [ anon ]
+00007ffff7fcf000      8K r-x--   [ anon ]
+00007ffff7fd1000      8K r---- ld-2.30.so
+00007ffff7fd3000    128K r-x-- ld-2.30.so
+00007ffff7ff3000     32K r---- ld-2.30.so
+00007ffff7ffc000      4K r---- ld-2.30.so
+00007ffff7ffd000      4K rw--- ld-2.30.so
+00007ffff7ffe000      4K rw---   [ anon ]
+00007ffffffdd000    136K rw---   [ stack ]
+ffffffffff600000      4K r-x--   [ anon ]
+ total             2200K
+```
+And after calling mmap:
+```console
+(lldb) platform shell pmap 213115
+213115:   /home/danielbevenius/work/linux/learning-linux-kernel/mmap
+0000000000400000      4K r---- mmap
+0000000000401000      4K r-x-- mmap
+0000000000402000      4K r---- mmap
+0000000000403000      4K r---- mmap
+0000000000404000      4K rw--- mmap
+0000000000405000    132K rw---   [ anon ]
+00007ffff7dde000    148K r---- libc-2.30.so
+00007ffff7e03000   1340K r-x-- libc-2.30.so
+00007ffff7f52000    296K r---- libc-2.30.so
+00007ffff7f9c000      4K ----- libc-2.30.so
+00007ffff7f9d000     12K r---- libc-2.30.so
+00007ffff7fa0000     12K rw--- libc-2.30.so
+00007ffff7fa3000     24K rw---   [ anon ]
+00007ffff7fcb000     16K r----   [ anon ]
+00007ffff7fcf000      8K r-x--   [ anon ]
+00007ffff7fd1000      8K r---- ld-2.30.so
+00007ffff7fd3000    128K r-x-- ld-2.30.so
+00007ffff7ff3000     32K r---- ld-2.30.so
+00007ffff7ffb000      4K rw---   [ anon ]
+00007ffff7ffc000      4K r---- ld-2.30.so
+00007ffff7ffd000      4K rw--- ld-2.30.so
+00007ffff7ffe000      4K rw---   [ anon ]
+00007ffffffdd000    136K rw---   [ stack ]
+ffffffffff600000      4K r-x--   [ anon ]
+ total             2336K
+```
+And notice that the size of resident (physical RAM) has not changed:
+```console
+(lldb) platform shell ps -o pid,user,vsz,rss,comm,args 129715
+    PID USER        VSZ   RSS COMMAND         COMMAND
+ 129715 danielb+   2332   764 mmap            /home/danielbevenius/work/linux/learning-linux-kernel/mmap
+```
+But after we write to this memory map the resident size will have grown:
+```console
+lldb) platform shell ps -o pid,user,vsz,rss,comm,args 213399
+    PID USER        VSZ   RSS COMMAND         COMMAND
+ 213399 danielb+   2856   568 mmap            /home/danielbevenius/work/linux/learning-linux-kernel/mmap
+```
+
+
