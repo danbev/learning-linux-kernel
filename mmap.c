@@ -23,6 +23,8 @@ int main(void) {
   }
  
   strcpy(mem_area, "Something...");
+
+  mprotect(mem_area, pagesize, PROT_EXEC);
  
   printf("mem_area address: %p\n", &mem_area);
   printf("mem_area content: %s\n", mem_area);
