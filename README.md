@@ -59,20 +59,27 @@ The rest, from TASK_SIZE to 2³² or 2⁶⁴ is reserved for the kernel and is t
 same for each process. So, while the Kernel space is the same for each process
 the user address space will be different. 
 
-Let's take a look at a virtual address, for example the following:
-```
-Virtual address: 0x00003204
-```
-Part of this address will be a virtual page number (VPN) and part of it will
-be a page offset:
-```
-31                                 12 11
-+------------------------------------------------------+
-|     0x0003                         |   0x204         |
-+------------------------------------------------------+
-```
 The Memory Management Unit (MMU), which is a hardware component, manages virtual
-addresses by mapping virtual addresses to physical addresses.
+addresses by mapping virtual addresses to physical addresses, and also provides
+protection by check privileges.
+
+```
+32        22 21  12 11      0
++---------------------------+                      +-------------------+
+| Directory | Page | Offset | ----------+          | Page frame #1     | 4Kb (4096 bytes)
++---------------------------+           |          +-------------------+
+    |            |                      |          | Page frame #2     | 4Kb (4096 bytes)
+    |            |                      |          +-------------------+
++---------------+|  +-------------+     |          | Page frame #3     | 4Kb (4096 bytes)
+| Page Directory||  | Page Table  |     |          +-------------------+
++---------------+|  +-------------+     |          | Page frame #4     | 4Kb (4096 bytes)
+| Entry (PDE)   |-->| +Page index |------------->  +-------------------+
++---------------+   +-------------+
+
+```
+So a virtual address consists of three parts, a directory entry pointer, a page
+table index, and an page frame offset.
+
 The unit the MMU operate with is a `page`. The size can vary but lets say it is
 4 KB. A page frame is the physical page.
 ```
