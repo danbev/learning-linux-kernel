@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-void __attribute__ ((constructor)) a_constructor() {
+void __attribute__ ((constructor)) some_constructor() {
   printf("%s\n", __FUNCTION__);
 }
 

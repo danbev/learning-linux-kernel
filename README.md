@@ -978,4 +978,72 @@ lldb) platform shell ps -o pid,user,vsz,rss,comm,args 213399
  213399 danielb+   2856   568 mmap            /home/danielbevenius/work/linux/learning-linux-kernel/mmap
 ```
 
+### .init
+When a program starts the system will execute the code in this section before
+calling the main program entry point.
 
+### .fini
+When the program exists normally the system will execute code in this section.
+
+
+### deregister_tm_clones
+```console
+00000000000060f0 <deregister_tm_clones>:                                        
+    60f0:       48 8d 3d 39 3f 04 00    lea    0x43f39(%rip),%rdi        # 4a030 <__TMC_END__>
+    60f7:       48 8d 05 32 3f 04 00    lea    0x43f32(%rip),%rax        # 4a030 <__TMC_END__>
+    60fe:       48 39 f8                cmp    %rdi,%rax                        
+    6101:       74 15                   je     6118 <deregister_tm_clones+0x28> 
+    6103:       48 8b 05 06 39 04 00    mov    0x43906(%rip),%rax        # 49a10 <_ITM_deregisterTMCloneTable>
+    610a:       48 85 c0                test   %rax,%rax                        
+    610d:       74 09                   je     6118 <deregister_tm_clones+0x28> 
+    610f:       ff e0                   jmpq   *%rax                            
+    6111:       0f 1f 80 00 00 00 00    nopl   0x0(%rax)                        
+    6118:       c3                      retq                                    
+    6119:       0f 1f 80 00 00 00 00    nopl   0x0(%rax)
+```
+
+### register_tm_clones
+```console
+0000000000006120 <register_tm_clones>:                                          
+    6120:       48 8d 3d 09 3f 04 00    lea    0x43f09(%rip),%rdi        # 4a030 <__TMC_END__>
+    6127:       48 8d 35 02 3f 04 00    lea    0x43f02(%rip),%rsi        # 4a030 <__TMC_END__>
+    612e:       48 29 fe                sub    %rdi,%rsi                        
+    6131:       48 89 f0                mov    %rsi,%rax                        
+    6134:       48 c1 ee 3f             shr    $0x3f,%rsi                       
+    6138:       48 c1 f8 03             sar    $0x3,%rax                        
+    613c:       48 01 c6                add    %rax,%rsi                        
+    613f:       48 d1 fe                sar    %rsi                             
+    6142:       74 14                   je     6158 <register_tm_clones+0x38>   
+    6144:       48 8b 05 f5 3d 04 00    mov    0x43df5(%rip),%rax        # 49f40 <_ITM_registerTMCloneTable>
+    614b:       48 85 c0                test   %rax,%rax                        
+    614e:       74 08                   je     6158 <register_tm_clones+0x38>   
+    6150:       ff e0                   jmpq   *%rax                            
+    6152:       66 0f 1f 44 00 00       nopw   0x0(%rax,%rax,1)                 
+    6158:       c3                      retq                                    
+    6159:       0f 1f 80 00 00 00 00    nopl   0x0(%rax) 
+```
+
+### __do_global_dtors_aux
+The example use below is [simplec.cc](./simple.cc).
+
+```console
+lldb -- ./simplec++
+(lldb) br s -n __do_global_dtors_aux
+(lldb) r
+(lldb) f
+frame #0: 0x0000000000401110 simplec++`__do_global_dtors_aux
+simplec++`__do_global_dtors_aux:
+->  0x401110 <+0>:  endbr64 
+    0x401114 <+4>:  cmp    byte ptr [rip + 0x2f25], 0x0 ; simplec++.PT_LOAD[3] + 615
+    0x40111b <+11>: jne    0x401130                  ; <+32>
+    0x40111d <+13>: push   rbp
+(lldb) bt
+* thread #1, name = 'simplec++', stop reason = breakpoint 1.1
+  * frame #0: 0x0000000000401110 simplec++`__do_global_dtors_aux
+    frame #1: 0x00007ffff7fe230b ld-2.30.so`.annobin_dl_fini.c + 523
+    frame #2: 0x00007ffff7ac3e87 libc.so.6`.annobin_exit.c + 247
+    frame #3: 0x00007ffff7ac4040 libc.so.6`__GI_exit + 32
+    frame #4: 0x00007ffff7aac1aa libc.so.6`.annobin_libc_start.c + 250
+    frame #5: 0x000000000040108e simplec++`.annobin_init.c.hot + 46
+```
+So what this section enables is to clean up global data.
