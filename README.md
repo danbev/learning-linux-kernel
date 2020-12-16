@@ -64,21 +64,30 @@ addresses by mapping virtual addresses to physical addresses, and also provides
 protection by check privileges.
 
 ```
-32        22 21  12 11      0
-+---------------------------+                      +-------------------+
-| Directory | Page | Offset | ----------+          | Page frame #1     | 4Kb (4096 bytes)
-+---------------------------+           |          +-------------------+
-    |            |                      |          | Page frame #2     | 4Kb (4096 bytes)
-    |            |                      |          +-------------------+
-+---------------+|  +-------------+     |          | Page frame #3     | 4Kb (4096 bytes)
-| Page Directory||  | Page Table  |     |          +-------------------+
-+---------------+|  +-------------+     |          | Page frame #4     | 4Kb (4096 bytes)
-| Entry (PDE)   |-->| +Page index |------------->  +-------------------+
-+---------------+   +-------------+
-
+    32        22 21  12 11      0
+    +---------------------------+                      +-------------------+
+ +--| Directory | Page | Offset | ----------+          | Page frame #1     | 4Kb (4096 bytes)
+ |  +---------------------------+           |          +-------------------+
+ |                   |                      |          | Page frame #2     | 4Kb (4096 bytes)
+ |                   |                      |          +-------------------+
+ |  +---------------+|  +-------------+     |          | Page frame #3     | 4Kb (4096 bytes)
+ |  | Page Directory||  | Page Table  |     |          +-------------------+
+ |  +---------------+|  +-------------+     |          | Page frame #4     | 4Kb (4096 bytes)
+ +->| Entry (PDE)   |-->| +Page index |------------->  +-------------------+
+ |  +---------------+   +-------------+
+ |
++---+
+|cr3|
++---+
 ```
+The physical address of the Page Directory is stored in control register `cr3`.
 So a virtual address consists of three parts, a directory entry pointer, a page
 table index, and an page frame offset.
+
+The page tables are stored in main memory and must be initialized by the kernel
+before enabling the paging unit.
+
+The 
 
 The unit the MMU operate with is a `page`. The size can vary but lets say it is
 4 KB. A page frame is the physical page.
@@ -976,11 +985,605 @@ But after we write to this memory map the resident size will have grown:
 lldb) platform shell ps -o pid,user,vsz,rss,comm,args 213399
     PID USER        VSZ   RSS COMMAND         COMMAND
  213399 danielb+   2856   568 mmap            /home/danielbevenius/work/linux/learning-linux-kernel/mmap
+
 ```
+
+### Linker script
+Before we dig into and step through the startup progres we need to consider
+what the linker does with out object code. If we only inspect the object file
+using objdump we don't see the complete linked object which we see when it is
+loaded into the debugger.
+
+We can pass `-verbose` to the linker to see the linker script it uses:
+```console
+$ g++ -O0 -g -o ctor ctor.cc -Wl,-verbose
+```
+Linker script
+```console
+sing internal linker script:
+==================================================
+/* Script for -z combreloc -z separate-code: combine and sort reloc sections with separate code segment */
+/* Copyright (C) 2014-2019 Free Software Foundation, Inc.
+   Copying and distribution of this script, with or without modification,
+   are permitted in any medium without royalty provided the copyright
+   notice and this notice are preserved.  */
+OUTPUT_FORMAT("elf64-x86-64", "elf64-x86-64",
+	      "elf64-x86-64")
+OUTPUT_ARCH(i386:x86-64)
+ENTRY(_start)
+SEARCH_DIR("=/usr/x86_64-redhat-linux/lib64"); SEARCH_DIR("=/usr/lib64"); SEARCH_DIR("=/usr/local/lib64"); SEARCH_DIR("=/lib64"); SEARCH_DIR("=/usr/x86_64-redhat-linux/lib"); SEARCH_DIR("=/usr/local/lib"); SEARCH_DIR("=/lib"); SEARCH_DIR("=/usr/lib");
+SECTIONS
+{
+  PROVIDE (__executable_start = SEGMENT_START("text-segment", 0x400000)); . = SEGMENT_START("text-segment", 0x400000) + SIZEOF_HEADERS;
+  .interp         : { *(.interp) }
+  .note.gnu.build-id  : { *(.note.gnu.build-id) }
+  .hash           : { *(.hash) }
+  .gnu.hash       : { *(.gnu.hash) }
+  .dynsym         : { *(.dynsym) }
+  .dynstr         : { *(.dynstr) }
+  .gnu.version    : { *(.gnu.version) }
+  .gnu.version_d  : { *(.gnu.version_d) }
+  .gnu.version_r  : { *(.gnu.version_r) }
+  .rela.dyn       :
+    {
+      *(.rela.init)
+      *(.rela.text .rela.text.* .rela.gnu.linkonce.t.*)
+      *(.rela.fini)
+      *(.rela.rodata .rela.rodata.* .rela.gnu.linkonce.r.*)
+      *(.rela.data .rela.data.* .rela.gnu.linkonce.d.*)
+      *(.rela.tdata .rela.tdata.* .rela.gnu.linkonce.td.*)
+      *(.rela.tbss .rela.tbss.* .rela.gnu.linkonce.tb.*)
+      *(.rela.ctors)
+      *(.rela.dtors)
+      *(.rela.got)
+      *(.rela.bss .rela.bss.* .rela.gnu.linkonce.b.*)
+      *(.rela.ldata .rela.ldata.* .rela.gnu.linkonce.l.*)
+      *(.rela.lbss .rela.lbss.* .rela.gnu.linkonce.lb.*)
+      *(.rela.lrodata .rela.lrodata.* .rela.gnu.linkonce.lr.*)
+      *(.rela.ifunc)
+    }
+  .rela.plt       :
+    {
+      *(.rela.plt)
+      PROVIDE_HIDDEN (__rela_iplt_start = .);
+      *(.rela.iplt)
+      PROVIDE_HIDDEN (__rela_iplt_end = .);
+    }
+  . = ALIGN(CONSTANT (MAXPAGESIZE));
+  .init           :
+  {
+    KEEP (*(SORT_NONE(.init)))
+  }
+  .plt            : { *(.plt) *(.iplt) }
+.plt.got        : { *(.plt.got) }
+.plt.sec        : { *(.plt.sec) }
+  .text           :
+  {
+    *(.text.unlikely .text.*_unlikely .text.unlikely.*)
+    *(.text.exit .text.exit.*)
+    *(.text.startup .text.startup.*)
+    *(.text.hot .text.hot.*)
+    *(.text .stub .text.* .gnu.linkonce.t.*)
+    /* .gnu.warning sections are handled specially by elf32.em.  */
+    *(.gnu.warning)
+  }
+  .fini           :
+  {
+    KEEP (*(SORT_NONE(.fini)))
+  }
+  PROVIDE (__etext = .);
+  PROVIDE (_etext = .);
+  PROVIDE (etext = .);
+  . = ALIGN(CONSTANT (MAXPAGESIZE));
+  /* Adjust the address for the rodata segment.  We want to adjust up to
+     the same address within the page on the next page up.  */
+  . = SEGMENT_START("rodata-segment", ALIGN(CONSTANT (MAXPAGESIZE)) + (. & (CONSTANT (MAXPAGESIZE) - 1)));
+  .rodata         : { *(.rodata .rodata.* .gnu.linkonce.r.*) }
+  .rodata1        : { *(.rodata1) }
+  .eh_frame_hdr   : { *(.eh_frame_hdr) *(.eh_frame_entry .eh_frame_entry.*) }
+  .eh_frame       : ONLY_IF_RO { KEEP (*(.eh_frame)) *(.eh_frame.*) }
+  .gcc_except_table   : ONLY_IF_RO { *(.gcc_except_table .gcc_except_table.*) }
+  .gnu_extab   : ONLY_IF_RO { *(.gnu_extab*) }
+  /* These sections are generated by the Sun/Oracle C++ compiler.  */
+  .exception_ranges   : ONLY_IF_RO { *(.exception_ranges*) }
+  /* Adjust the address for the data segment.  We want to adjust up to
+     the same address within the page on the next page up.  */
+  . = DATA_SEGMENT_ALIGN (CONSTANT (MAXPAGESIZE), CONSTANT (COMMONPAGESIZE));
+  /* Exception handling  */
+  .eh_frame       : ONLY_IF_RW { KEEP (*(.eh_frame)) *(.eh_frame.*) }
+  .gnu_extab      : ONLY_IF_RW { *(.gnu_extab) }
+  .gcc_except_table   : ONLY_IF_RW { *(.gcc_except_table .gcc_except_table.*) }
+  .exception_ranges   : ONLY_IF_RW { *(.exception_ranges*) }
+  /* Thread Local Storage sections  */
+  .tdata	  :
+   {
+     PROVIDE_HIDDEN (__tdata_start = .);
+     *(.tdata .tdata.* .gnu.linkonce.td.*)
+   }
+  .tbss		  : { *(.tbss .tbss.* .gnu.linkonce.tb.*) *(.tcommon) }
+  .preinit_array    :
+  {
+    PROVIDE_HIDDEN (__preinit_array_start = .);
+    KEEP (*(.preinit_array))
+    PROVIDE_HIDDEN (__preinit_array_end = .);
+  }
+  .init_array    :
+  {
+    PROVIDE_HIDDEN (__init_array_start = .);
+    KEEP (*(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*)))
+    KEEP (*(.init_array EXCLUDE_FILE (*crtbegin.o *crtbegin?.o *crtend.o *crtend?.o ) .ctors))
+    PROVIDE_HIDDEN (__init_array_end = .);
+  }
+  .fini_array    :
+  {
+    PROVIDE_HIDDEN (__fini_array_start = .);
+    KEEP (*(SORT_BY_INIT_PRIORITY(.fini_array.*) SORT_BY_INIT_PRIORITY(.dtors.*)))
+    KEEP (*(.fini_array EXCLUDE_FILE (*crtbegin.o *crtbegin?.o *crtend.o *crtend?.o ) .dtors))
+    PROVIDE_HIDDEN (__fini_array_end = .);
+  }
+  .ctors          :
+  {
+    /* gcc uses crtbegin.o to find the start of
+       the constructors, so we make sure it is
+       first.  Because this is a wildcard, it
+       doesn't matter if the user does not
+       actually link against crtbegin.o; the
+       linker won't look for a file to match a
+       wildcard.  The wildcard also means that it
+       doesn't matter which directory crtbegin.o
+       is in.  */
+    KEEP (*crtbegin.o(.ctors))
+    KEEP (*crtbegin?.o(.ctors))
+    /* We don't want to include the .ctor section from
+       the crtend.o file until after the sorted ctors.
+       The .ctor section from the crtend file contains the
+       end of ctors marker and it must be last */
+    KEEP (*(EXCLUDE_FILE (*crtend.o *crtend?.o ) .ctors))
+    KEEP (*(SORT(.ctors.*)))
+    KEEP (*(.ctors))
+  }
+  .dtors          :
+  {
+    KEEP (*crtbegin.o(.dtors))
+    KEEP (*crtbegin?.o(.dtors))
+    KEEP (*(EXCLUDE_FILE (*crtend.o *crtend?.o ) .dtors))
+    KEEP (*(SORT(.dtors.*)))
+    KEEP (*(.dtors))
+  }
+  .jcr            : { KEEP (*(.jcr)) }
+  .data.rel.ro : { *(.data.rel.ro.local* .gnu.linkonce.d.rel.ro.local.*) *(.data.rel.ro .data.rel.ro.* .gnu.linkonce.d.rel.ro.*) }
+  .dynamic        : { *(.dynamic) }
+  .got            : { *(.got) *(.igot) }
+  . = DATA_SEGMENT_RELRO_END (SIZEOF (.got.plt) >= 24 ? 24 : 0, .);
+  .got.plt        : { *(.got.plt) *(.igot.plt) }
+  .data           :
+  {
+    *(.data .data.* .gnu.linkonce.d.*)
+    SORT(CONSTRUCTORS)
+  }
+  .data1          : { *(.data1) }
+  _edata = .; PROVIDE (edata = .);
+  . = .;
+  __bss_start = .;
+  .bss            :
+  {
+   *(.dynbss)
+   *(.bss .bss.* .gnu.linkonce.b.*)
+   *(COMMON)
+   /* Align here to ensure that the .bss section occupies space up to
+      _end.  Align after .bss to ensure correct alignment even if the
+      .bss section disappears because there are no input sections.
+      FIXME: Why do we need it? When there is no .bss section, we do not
+      pad the .data section.  */
+   . = ALIGN(. != 0 ? 64 / 8 : 1);
+  }
+  .lbss   :
+  {
+    *(.dynlbss)
+    *(.lbss .lbss.* .gnu.linkonce.lb.*)
+    *(LARGE_COMMON)
+  }
+  . = ALIGN(64 / 8);
+  . = SEGMENT_START("ldata-segment", .);
+  .lrodata   ALIGN(CONSTANT (MAXPAGESIZE)) + (. & (CONSTANT (MAXPAGESIZE) - 1)) :
+  {
+    *(.lrodata .lrodata.* .gnu.linkonce.lr.*)
+  }
+  .ldata   ALIGN(CONSTANT (MAXPAGESIZE)) + (. & (CONSTANT (MAXPAGESIZE) - 1)) :
+  {
+    *(.ldata .ldata.* .gnu.linkonce.l.*)
+    . = ALIGN(. != 0 ? 64 / 8 : 1);
+  }
+  . = ALIGN(64 / 8);
+  _end = .; PROVIDE (end = .);
+  . = DATA_SEGMENT_END (.);
+  /* Stabs debugging sections.  */
+  .stab          0 : { *(.stab) }
+  .stabstr       0 : { *(.stabstr) }
+  .stab.excl     0 : { *(.stab.excl) }
+  .stab.exclstr  0 : { *(.stab.exclstr) }
+  .stab.index    0 : { *(.stab.index) }
+  .stab.indexstr 0 : { *(.stab.indexstr) }
+  .comment       0 : { *(.comment) }
+  .gnu.build.attributes : { *(.gnu.build.attributes .gnu.build.attributes.*) }
+  /* DWARF debug sections.
+     Symbols in the DWARF debugging sections are relative to the beginning
+     of the section so we begin them at 0.  */
+  /* DWARF 1 */
+  .debug          0 : { *(.debug) }
+  .line           0 : { *(.line) }
+  /* GNU DWARF 1 extensions */
+  .debug_srcinfo  0 : { *(.debug_srcinfo) }
+  .debug_sfnames  0 : { *(.debug_sfnames) }
+  /* DWARF 1.1 and DWARF 2 */
+  .debug_aranges  0 : { *(.debug_aranges) }
+  .debug_pubnames 0 : { *(.debug_pubnames) }
+  /* DWARF 2 */
+  .debug_info     0 : { *(.debug_info .gnu.linkonce.wi.*) }
+  .debug_abbrev   0 : { *(.debug_abbrev) }
+  .debug_line     0 : { *(.debug_line .debug_line.* .debug_line_end) }
+  .debug_frame    0 : { *(.debug_frame) }
+  .debug_str      0 : { *(.debug_str) }
+  .debug_loc      0 : { *(.debug_loc) }
+  .debug_macinfo  0 : { *(.debug_macinfo) }
+  /* SGI/MIPS DWARF 2 extensions */
+  .debug_weaknames 0 : { *(.debug_weaknames) }
+  .debug_funcnames 0 : { *(.debug_funcnames) }
+  .debug_typenames 0 : { *(.debug_typenames) }
+  .debug_varnames  0 : { *(.debug_varnames) }
+  /* DWARF 3 */
+  .debug_pubtypes 0 : { *(.debug_pubtypes) }
+  .debug_ranges   0 : { *(.debug_ranges) }
+  /* DWARF Extension.  */
+  .debug_macro    0 : { *(.debug_macro) }
+  .debug_addr     0 : { *(.debug_addr) }
+  .gnu.attributes 0 : { KEEP (*(.gnu.attributes)) }
+  /DISCARD/ : { *(.note.GNU-stack) *(.gnu_debuglink) *(.gnu.lto_*) }
+}
+```
+
+
+### execve
+Is a system call that loads a new program into a process's memory and replaces
+the calling program.
+```c
+#include <unistd.h>
+
+int execve(const char* pathname, char* const argv[], char* const envp[]);
+```
+This call will never return if successfull, remember that it will replace
+the current process with the new application, and `-1` upon failure.
+
+[execve]https://github.com/torvalds/linux/blob/575966e080270b7574175da35f7f7dd5ecd89ff4/fs/exec.c#L1955):
+```c
+SYSCALL_DEFINE3(execve,
+		const char __user *, filename,
+		const char __user *const __user *, argv,
+		const char __user *const __user *, envp) {
+	return do_execve(getname(filename), argv, envp);
+}
+```
+[do_execve](https://github.com/torvalds/linux/blob/575966e080270b7574175da35f7f7dd5ecd89ff4/fs/exec.c#L1878):
+```c
+int do_execve(struct filename *filename,
+	const char __user *const __user *__argv,
+	const char __user *const __user *__envp) {
+	struct user_arg_ptr argv = { .ptr.native = __argv };
+	struct user_arg_ptr envp = { .ptr.native = __envp };
+	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
+}
+```
+[do_execveat_common](https://github.com/torvalds/linux/blob/575966e080270b7574175da35f7f7dd5ecd89ff4/fs/exec.c#L1862):
+```c
+static int do_execveat_common(int fd, struct filename *filename,
+			      struct user_arg_ptr argv,
+			      struct user_arg_ptr envp,
+			      int flags) {
+	return __do_execve_file(fd, filename, argv, envp, flags, NULL);
+}
+```
+
+Now [__do_execve_file](https://github.com/torvalds/linux/blob/575966e080270b7574175da35f7f7dd5ecd89ff4/fs/exec.c#L1715)
+contains the bulk of work as far as I can tell:
+```c
+static int __do_execve_file(int fd, struct filename *filename,
+			    struct user_arg_ptr argv,
+			    struct user_arg_ptr envp,
+			    int flags, struct file *file)
+{
+	retval = bprm_mm_init(bprm);
+	if (retval)
+		goto out_unmark;
+
+	retval = prepare_arg_pages(bprm, argv, envp);
+	if (retval < 0)
+		goto out;
+
+	retval = prepare_binprm(bprm);
+	if (retval < 0)
+		goto out;
+
+	retval = copy_strings_kernel(1, &bprm->filename, bprm);
+	if (retval < 0)
+		goto out;
+
+	bprm->exec = bprm->p;
+	retval = copy_strings(bprm->envc, envp, bprm);
+	if (retval < 0)
+		goto out;
+
+	retval = copy_strings(bprm->argc, argv, bprm);
+	if (retval < 0)
+		goto out;
+
+	would_dump(bprm, bprm->file);
+
+	retval = exec_binprm(bprm);
+}
+```
+[exec_binprm](https://github.com/torvalds/linux/blob/575966e080270b7574175da35f7f7dd5ecd89ff4/fs/exec.c#L1690):
+```c
+static int exec_binprm(struct linux_binprm *bprm)
+{
+	pid_t old_pid, old_vpid;
+	int ret;
+
+	/* Need to fetch pid before load_binary changes it */
+	old_pid = current->pid;
+	rcu_read_lock();
+	old_vpid = task_pid_nr_ns(current, task_active_pid_ns(current->parent));
+	rcu_read_unlock();
+
+	ret = search_binary_handler(bprm);
+	if (ret >= 0) {
+		audit_bprm(bprm);
+		trace_sched_process_exec(current, old_pid, bprm);
+		ptrace_event(PTRACE_EVENT_EXEC, old_vpid);
+		proc_exec_connector(current);
+	}
+
+	return ret;
+}
+```
+I'm guessing `proc_exec_connetor` somehow calls `_start`
+
+### _start
+Now, in our case `execve` was set up the stack with argc, argv, envp etc.
+
+When stopping in main an displaying the backtrace in lldb we get:
+```console
+(lldb) bt
+* thread #1, name = 'ctor', stop reason = breakpoint 1.1
+  * frame #0: 0x0000000000401131 ctor`main(argc=1, argv=0x00007fffffffd1d8) at ctor.cc:14:1
+    frame #1: 0x00007ffff7e051a3 libc.so.6`.annobin_libc_start.c + 243
+    frame #2: 0x000000000040106e ctor`.annobin_init.c.hot + 46
+```
+In gdb we get:
+```console
+(gdb) set backtrace past-main on
+(gdb) bt
+#0  main (argc=1, argv=0x7ffd6e0f1978) at ctor.cc:14
+#1  0x00007fe0ceb441a3 in __libc_start_main () from /lib64/libc.so.6
+#2  0x000000000040106e in _start ()
+```
+Notice the names are different but the addresses are the same and you can
+also verify that the assembly code is the same for these functions. I'm not
+sure why this is but it's worth mentioning.
+
+ctor`.annobin_init.c.hot/_start() is the first frame because the execve process
+was replaced with this one.
+
+Notice that if we set a breakpoint in _start in lldb it will be as:
+```console
+(lldb) br s -n _start
+Breakpoint 1: where = ctor`.annobin_init.c.hot, address = 0x0000000000401040
+```
+
+_start be found in the gcc source tree, on my local machine it's in
+~/work/gcc/glibc/sysdeps/x86_64/start.S
+
+```console
+
+```
+(lldb) disassemble 
+ctor`.annobin_init.c.hot:
+->  0x401040 <+0>:  endbr64 
+    0x401044 <+4>:  xor    ebp, ebp
+    0x401046 <+6>:  mov    r9, rdx
+    0x401049 <+9>:  pop    rsi
+    0x40104a <+10>: mov    rdx, rsp
+    0x40104d <+13>: and    rsp, -0x10
+    0x401051 <+17>: push   rax
+    0x401052 <+18>: push   rsp
+    0x401053 <+19>: mov    r8, 0x401220
+    0x40105a <+26>: mov    rcx, 0x4011b0
+    0x401061 <+33>: mov    rdi, 0x401126
+    0x401068 <+40>: call   qword ptr [rip + 0x2f82]
+    0x40106e <+46>: hlt
+```
+First we have the `endbr64` instruction which is about stack frame protection.
+Next we have the 
+```console
+->  0x401044 <+4>:  xor    ebp, ebp
+```
+This is clearning ebp (the stack base pointer) as suggested by the ABI to be
+done by the outermost frame.
+```console
+->  0x401046 <+6>:  mov    r9, rdx
+```
+This is moving the value in rdx in to r9. So what is in rdx?
+```console
+(lldb) register read rdx
+     rdx = 0x00007ffff7fe2100  ld-2.30.so`.annobin_dl_fini.c
+```
+```console
+->  0x401049 <+9>:  pop    rsi
+```
+This instruction is poping the topmost value from the stack and storing it
+in rsi:
+```console
+(lldb) register read rsi
+     rsi = 0x0000000000000001
+```
+This is argc.
+```console
+->  0x40104a <+10>: mov    rdx, rsp
+```
+So we are moving the value in rsp into rdx.
+```console
+(lldb) register read rdx
+     rdx = 0x00007fffffffd1d8
+(lldb) memory read -f x -s 8 -c 1 0x00007fffffffd1d8
+(lldb) memory read -f s 0x00007fffffffd5ab
+0x7fffffffd5ab: "/home/danielbevenius/work/assembly/learning-assembly/ctor"
+```
+So we can see that rdx was holding char** argv.
+
+```console
+->  0x40104d <+13>: and    rsp, -0x10
+```
+This (I think) is aligning the stack on 16 byte boundry.
+
+```console
+->  0x401051 <+17>: push   rax
+```
+This will copy the value in rax onto the stack:
+```console
+(lldb) register read rax
+     rax = 0x00007ffff7ffdfa0  ld-2.30.so`__GI__dl_starting_up
+```
+
+```console
+->  0x401052 <+18>: push   rsp
+```
+This will push the current value of the stackpointer onto the stack.
+```console
+->  0x401053 <+19>: mov    r8, 0x401220
+```
+Next we will move the value 0x401220 into r8:
+```console
+(lldb) disassemble -s 0x401220
+ctor`__libc_csu_fini:
+    0x401220 <+0>: endbr64 
+    0x401224 <+4>: ret    
+    0x401225:      add    byte ptr [rax], al
+    0x401227:      add    bl, dh
+```
+So we are placing the memory address of __libc_csu_fini into r8.
+```console
+->  0x40105a <+26>: mov    rcx, 0x4011b0
+```
+And next we move libc_csu_init into rcx:
+```console
+(lldb) disassemble -s 0x4011b0
+ctor`__libc_csu_init:
+    0x4011b0 <+0>:  endbr64 
+    0x4011b4 <+4>:  push   r15
+    0x4011b6 <+6>:  lea    r15, [rip + 0x2c4b]       ; __frame_dummy_init_array_entry
+    0x4011bd <+13>: push   r14
+    0x4011bf <+15>: mov    r14, rdx
+    0x4011c2 <+18>: push   r13
+    0x4011c4 <+20>: mov    r13, rsi
+    0x4011c7 <+23>: push   r12
+    0x4011c9 <+25>: mov    r12d, edi
+    0x4011cc <+28>: push   rbp
+```
+```console
+->  0x401061 <+33>: mov    rdi, 0x401126
+```
+And this placing the address of main into rdi:
+```console
+(lldb) disassemble -s 0x401126
+ctor`main:
+    0x401126 <+0>:  push   rbp
+    0x401127 <+1>:  mov    rbp, rsp
+    0x40112a <+4>:  mov    dword ptr [rbp - 0x4], edi
+    0x40112d <+7>:  mov    qword ptr [rbp - 0x10], rsi
+    0x401131 <+11>: mov    eax, 0x0
+    0x401136 <+16>: pop    rbp
+    0x401137 <+17>: ret
+```
+```console
+->  0x401068 <+40>: call   qword ptr [rip + 0x2f82]
+```
+This will call .annobin_libc_start.c/__libc_start_main:
+```console
+libc.so.6`.annobin_libc_start.c:
+->  0x7ffff7e050b0 <+0>: endbr64 
+    0x7ffff7e050b4 <+4>: push   r14
+    0x7ffff7e050b6 <+6>: xor    eax, eax
+    0x7ffff7e050b8 <+8>: push   r13
+```
+So lets take a look at this function in a new section and take some notes
+before continuing the debugging session.
+
+### .annobin_libc_start.c/__libc_start_main
+Can be found in /work/gcc/glibc/csu/libc-start.c.
+```c
+STATIC int                                                                      
+LIBC_START_MAIN (int (*main) (int, char **, char ** MAIN_AUXVEC_DECL),          
+                 int argc, char **argv,                                         
+                 ElfW(auxv_t) *auxvec,                                          
+                 __typeof (main) init,                                          
+                 void (*fini) (void),                                           
+                 void (*rtld_fini) (void), void *stack_end)                     
+{
+    ...
+    if (init)                                                                     
+      (*init) (argc, argv, __environ MAIN_AUXVEC_PARAM);
+```
+Now, `init` is passed in as an argument and has the same siguature as main, so
+and it get linked in and the source can be found in
+/work/gcc/glibc/csu/elf-init.c in the function __libc_csu_init.
+```c
+extern void _init (void);                                                       
+extern void _fini (void);
+
+void __libc_csu_init (int argc, char **argv, char **envp) {
+
+    _init ();
+
+    const size_t size = __init_array_end - __init_array_start;
+    for (size_t i = 0; i < size; i++)
+        (*__init_array_start [i]) (argc, argv, envp);
+  }
+```
+Notice that _init is an external function which returns void and does not
+take any arguments. I think _init can be different for dynamically linked
+and statically linked programs. 
+
+
+### annobin
+There is a project named Annobin which is about adding extra information to
+binary files. This information is held in ELF notes section and is created
+by a plugin to GCC
+
+```
++----------------+       +--------+        +--------+
+| pre-init-array |<----> | Loader | -----> | _start |
++----------------+       +--------+        +--------+
+
+```
+
+_start -> __libc_start_main -> main -> exit(exit_value) -> run_exit_handlers
+       -> _exit() 
+
 
 ### .init
 When a program starts the system will execute the code in this section before
 calling the main program entry point.
+
+An example of this can be see in [init.c](./init.c):
+```console
+$ lldb -- init
+(lldb) br s -n some_constructor 
+(lldb) bt 10
+* thread #1, name = 'init', stop reason = breakpoint 1.1
+  * frame #0: 0x000000000040112a init`some_constructor at init.c:4:3
+    frame #1: 0x00000000004011ad init`__libc_csu_init + 77
+    frame #2: 0x00007ffff7e0512e libc.so.6`.annobin_libc_start.c + 126
+    frame #3: 0x000000000040106e init`.annobin_init.c.hot + 46
+```
 
 ### .fini
 When the program exists normally the system will execute code in this section.
@@ -1047,3 +1650,21 @@ simplec++`__do_global_dtors_aux:
     frame #5: 0x000000000040108e simplec++`.annobin_init.c.hot + 46
 ```
 So what this section enables is to clean up global data.
+
+
+### C++ constructors 
+This section contains notes about constructors and descructors that are
+run for global instances in c++ programs.
+These constructors are called before `main` is called:
+```console
+$ lldb -- ctor
+(lldb) br s -n Something
+(lldb) bt 10
+* thread #1, name = 'ctor', stop reason = breakpoint 1.1
+  * frame #0: 0x0000000000401194 ctor`Something::Something(this=0x0000000000404025) at ctor.cc:5:3
+    frame #1: 0x000000000040115f ctor`::__static_initialization_and_destruction_0(__initialize_p=1, __priority=65535) at ctor.cc:10:11
+    frame #2: 0x0000000000401189 ctor`::_GLOBAL__sub_I_s() at ctor.cc:14:1
+    frame #3: 0x00000000004011fd ctor`__libc_csu_init + 77
+    frame #4: 0x00007ffff7aac12e libc.so.6`.annobin_libc_start.c + 126
+    frame #5: 0x000000000040106e ctor`.annobin_init.c.hot + 46
+```
