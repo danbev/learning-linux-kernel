@@ -994,13 +994,16 @@ what the linker does with out object code. If we only inspect the object file
 using objdump we don't see the complete linked object which we see when it is
 loaded into the debugger.
 
+Details about how linker scripts work can be found
+[here](https://github.com/danbev/learning-cpp#ld-linker-scripts).
+
 We can pass `-verbose` to the linker to see the linker script it uses:
 ```console
 $ g++ -O0 -g -o ctor ctor.cc -Wl,-verbose
 ```
 Linker script
 ```console
-sing internal linker script:
+using internal linker script:
 ==================================================
 /* Script for -z combreloc -z separate-code: combine and sort reloc sections with separate code segment */
 /* Copyright (C) 2014-2019 Free Software Foundation, Inc.
