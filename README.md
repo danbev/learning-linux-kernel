@@ -732,7 +732,7 @@ $ /lib64/ld-linux-x86-64.so.2 --list /lib/x86_64-linux-gnu/libc.so.6
 The kernel call this somehow and it will loads the shared library passed to it
 if needed (if they were not already available in memory that is). The linker
 will then perform the relocations for the executable we want to run.
-The is a [linux_binfmt](https://github.com/torvalds/linux/blob/575966e080270b7574175da35f7f7dd5ecd89ff4/fs/binfmt_elf.c#L92) 
+There is a [linux_binfmt](https://github.com/torvalds/linux/blob/575966e080270b7574175da35f7f7dd5ecd89ff4/fs/binfmt_elf.c#L92) 
 struct which contains a function to load libraries:
 ```c
 static struct linux_binfmt elf_format = {
@@ -1010,11 +1010,17 @@ using internal linker script:
    Copying and distribution of this script, with or without modification,
    are permitted in any medium without royalty provided the copyright
    notice and this notice are preserved.  */
-OUTPUT_FORMAT("elf64-x86-64", "elf64-x86-64",
-	      "elf64-x86-64")
+OUTPUT_FORMAT("elf64-x86-64", "elf64-x86-64", "elf64-x86-64")
 OUTPUT_ARCH(i386:x86-64)
 ENTRY(_start)
-SEARCH_DIR("=/usr/x86_64-redhat-linux/lib64"); SEARCH_DIR("=/usr/lib64"); SEARCH_DIR("=/usr/local/lib64"); SEARCH_DIR("=/lib64"); SEARCH_DIR("=/usr/x86_64-redhat-linux/lib"); SEARCH_DIR("=/usr/local/lib"); SEARCH_DIR("=/lib"); SEARCH_DIR("=/usr/lib");
+SEARCH_DIR("=/usr/x86_64-redhat-linux/lib64");
+SEARCH_DIR("=/usr/lib64");
+SEARCH_DIR("=/usr/local/lib64");
+SEARCH_DIR("=/lib64");
+SEARCH_DIR("=/usr/x86_64-redhat-linux/lib");
+SEARCH_DIR("=/usr/local/lib");
+SEARCH_DIR("=/lib");
+SEARCH_DIR("=/usr/lib");
 SECTIONS
 {
   PROVIDE (__executable_start = SEGMENT_START("text-segment", 0x400000)); . = SEGMENT_START("text-segment", 0x400000) + SIZEOF_HEADERS;
