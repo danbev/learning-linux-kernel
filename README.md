@@ -988,6 +988,197 @@ lldb) platform shell ps -o pid,user,vsz,rss,comm,args 213399
 
 ```
 
+Lets start by taking a look at a c program that is compiled and linked before
+looking at a c++ example
+```console
+$ gcc -g -o simplec simple.c --verbose
+/usr/libexec/gcc/x86_64-redhat-linux/9/collect2
+-plugin /usr/libexec/gcc/x86_64-redhat-linux/9/liblto_plugin.so
+-plugin-opt=/usr/libexec/gcc/x86_64-redhat-linux/9/lto-wrapper
+-plugin-opt=-fresolution=/tmp/cc2Kmxls.res
+-plugin-opt=-pass-through=-lgcc
+-plugin-opt=-pass-through=-lgcc_s
+-plugin-opt=-pass-through=-lc
+-plugin-opt=-pass-through=-lgcc
+-plugin-opt=-pass-through=-lgcc_s
+--build-id
+--no-add-needed
+--eh-frame-hdr
+--hash-style=gnu
+-m elf_x86_64
+-dynamic-linker /lib64/ld-linux-x86-64.so.2
+-o simplec
+/usr/lib/gcc/x86_64-redhat-linux/9/../../../../lib64/crt1.o
+/usr/lib/gcc/x86_64-redhat-linux/9/../../../../lib64/crti.o
+/usr/lib/gcc/x86_64-redhat-linux/9/crtbegin.o
+-L/usr/lib/gcc/x86_64-redhat-linux/9
+-L/usr/lib/gcc/x86_64-redhat-linux/9/../../../../lib64
+-L/lib/../lib64
+-L/usr/lib/../lib64
+-L/usr/lib/gcc/x86_64-redhat-linux/9/../../..
+/tmp/cc99b3Mr.o
+-lgcc
+--push-state
+--as-needed
+-lgcc_s
+--pop-state
+-lc
+-lgcc
+--push-state
+--as-needed
+-lgcc_s
+--pop-state
+/usr/lib/gcc/x86_64-redhat-linux/9/crtend.o
+/usr/lib/gcc/x86_64-redhat-linux/9/../../../../lib64/crtn.o
+```
+
+Lets take a closer look at `crt1.o`. 
+First, what symbols are defined in this file:
+```console
+$ nm --defined-only /usr/lib/gcc/x86_64-redhat-linux/9/../../../../lib64/crt1.o 
+0000000000000035 t .annobin__dl_relocate_static_pie.end
+0000000000000030 t .annobin__dl_relocate_static_pie.start
+000000000000002f t .annobin_init.c
+000000000000002f t .annobin_init.c_end
+0000000000000000 t .annobin_init.c_end.exit
+0000000000000000 t .annobin_init.c_end.hot
+0000000000000000 t .annobin_init.c_end.startup
+0000000000000000 t .annobin_init.c_end.unlikely
+0000000000000000 t .annobin_init.c.exit
+0000000000000000 t .annobin_init.c.hot
+0000000000000000 t .annobin_init.c.startup
+0000000000000000 t .annobin_init.c.unlikely
+0000000000000030 t .annobin_static_reloc.c
+0000000000000035 t .annobin_static_reloc.c_end
+0000000000000000 t .annobin_static_reloc.c_end.exit
+0000000000000000 t .annobin_static_reloc.c_end.hot
+0000000000000000 t .annobin_static_reloc.c_end.startup
+0000000000000000 t .annobin_static_reloc.c_end.unlikely
+0000000000000000 t .annobin_static_reloc.c.exit
+0000000000000000 t .annobin_static_reloc.c.hot
+0000000000000000 t .annobin_static_reloc.c.startup
+0000000000000000 t .annobin_static_reloc.c.unlikely
+0000000000000000 D __data_start
+0000000000000000 W data_start
+0000000000000030 T _dl_relocate_static_pie
+0000000000000000 R _IO_stdin_used
+0000000000000000 T _start
+0000000000000000 n .text.exit.group
+0000000000000000 n .text.exit.group
+0000000000000000 n .text.hot.group
+0000000000000000 n .text.hot.group
+0000000000000000 n .text.startup.group
+0000000000000000 n .text.startup.group
+0000000000000000 n .text.unlikely.group
+0000000000000000 n .text.unlikely.group
+```
+All the symbols with `t`/`T` type mean that the symbols is in the text section.
+`_data_start` is in the initialized data section.
+`data_start` is a weak symbol.
+`_IO_stdin_used` is in the read only section.
+The ones in of type `n` are debugging symbols.
+
+So what symbols are references in crt1.o but not defined in it (that is they
+use the externa c keywork):
+```
+$ nm --extern-only /usr/lib/gcc/x86_64-redhat-linux/9/../../../../lib64/crt1.o 
+0000000000000000 D __data_start
+0000000000000000 W data_start
+0000000000000030 T _dl_relocate_static_pie
+                 U _GLOBAL_OFFSET_TABLE_
+0000000000000000 R _IO_stdin_used
+                 U __libc_csu_fini
+                 U __libc_csu_init
+                 U __libc_start_main
+                 U main
+0000000000000000 T _start
+```
+Notice that most of these are undefined `U` and especially note that
+`__libc_csu_fini`, `__libc_csu_init`, `__libc_start_main`, and `main` are here.
+So, we can see that `_start` is defined in crt1.o and if we dump the content
+we find:
+```console
+$ objdump -drwC   /usr/lib/gcc/x86_64-redhat-linux/9/../../../../lib64/crt1.o 
+
+/usr/lib/gcc/x86_64-redhat-linux/9/../../../../lib64/crt1.o:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+0000000000000000 <_start>:
+   0:	f3 0f 1e fa          	endbr64 
+   4:	31 ed                	xor    %ebp,%ebp
+   6:	49 89 d1             	mov    %rdx,%r9
+   9:	5e                   	pop    %rsi
+   a:	48 89 e2             	mov    %rsp,%rdx
+   d:	48 83 e4 f0          	and    $0xfffffffffffffff0,%rsp
+  11:	50                   	push   %rax
+  12:	54                   	push   %rsp
+  13:	4c 8b 05 00 00 00 00 	mov    0x0(%rip),%r8        # 1a <_start+0x1a>	16: R_X86_64_REX_GOTPCRELX	__libc_csu_fini-0x4
+  1a:	48 8b 0d 00 00 00 00 	mov    0x0(%rip),%rcx        # 21 <_start+0x21>	1d: R_X86_64_REX_GOTPCRELX	__libc_csu_init-0x4
+  21:	48 8b 3d 00 00 00 00 	mov    0x0(%rip),%rdi        # 28 <_start+0x28>	24: R_X86_64_REX_GOTPCRELX	main-0x4
+  28:	ff 15 00 00 00 00    	callq  *0x0(%rip)        # 2e <_start+0x2e>	2a: R_X86_64_GOTPCRELX	__libc_start_main-0x4
+  2e:	f4                   	hlt    
+
+000000000000002f <.annobin_init.c>:
+  2f:	90                   	nop
+
+0000000000000030 <_dl_relocate_static_pie>:
+  30:	f3 0f 1e fa          	endbr64 
+  34:	c3                   	retq 
+```
+Notice that there are a number of values that need to be relocated by the
+dynamic linker when it maps this object file into a process.
+If we take a look at a few of the entries in the relocation table we find:
+```console
+$ readelf -r   /usr/lib/gcc/x86_64-redhat-linux/9/../../../../lib64/crt1.o 
+
+Relocation section '.rela.text' at offset 0x1df8 contains 4 entries:
+  Offset          Info           Type           Sym. Value    Sym. Name + Addend
+000000000016  00590000002a R_X86_64_REX_GOTP 0000000000000000 __libc_csu_fini - 4
+00000000001d  005c0000002a R_X86_64_REX_GOTP 0000000000000000 __libc_csu_init - 4
+000000000024  005d0000002a R_X86_64_REX_GOTP 0000000000000000 main - 4
+00000000002a  006100000029 R_X86_64_GOTPCREL 0000000000000000 __libc_start_main - 4
+```
+Offset 0x16 is in row 13:
+```console
+13:   4c 8b 05 00 00 00 00    mov    0x0(%rip),%r8        # 1a <_start+0x1a>
+
+000000000016  00590000002a R_X86_64_REX_GOTP 0000000000000000 __libc_csu_fini - 4
+```
+So this is an instruction for the link editor to replace the entry in
+0x16 with the value that is gets by doing a R_X86_64_REX_GOTP. The syntx
+`0x0(%rip)` looks a little strange but what it is saying is that use the value
+taken from the instruction pointer register (notice that there is not offset
+specified) which will be the value of 
+```
+  13:	4c 8b 05 00 00 00 00
+                 ↑ 
+4c 8b 05 is the move and the register to move opcodes.
+```
+So when the code has been linked  this will just 
+```console
+Disassembly of section .text:
+
+0000000000401020 <_start>:
+  401020:	f3 0f 1e fa          	endbr64 
+  401024:	31 ed                	xor    %ebp,%ebp
+  401026:	49 89 d1             	mov    %rdx,%r9
+  401029:	5e                   	pop    %rsi
+  40102a:	48 89 e2             	mov    %rsp,%rdx
+  40102d:	48 83 e4 f0          	and    $0xfffffffffffffff0,%rsp
+  401031:	50                   	push   %rax
+  401032:	54                   	push   %rsp
+  401033:	49 c7 c0 90 11 40 00 	mov    $0x401190,%r8
+  40103a:	48 c7 c1 20 11 40 00 	mov    $0x401120,%rcx
+  401041:	48 c7 c7 06 11 40 00 	mov    $0x401106,%rdi
+  401048:	ff 15 a2 2f 00 00    	callq  *0x2fa2(%rip)        # 403ff0 <__libc_start_main@GLIBC_2.2.5>
+  40104e:	f4                   	hlt    
+```
+Note that `0x401190` in little endian is `901140` which can be written
+as `90 11 40` which matches `49 c7 c0 90 11 40 00`.
+
+
 ### Linker script
 Before we dig into and step through the startup progres we need to consider
 what the linker does with out object code. If we only inspect the object file
