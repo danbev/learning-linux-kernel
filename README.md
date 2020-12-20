@@ -1177,6 +1177,56 @@ Disassembly of section .text:
 ```
 Note that `0x401190` in little endian is `901140` which can be written
 as `90 11 40` which matches `49 c7 c0 90 11 40 00`.
+And the same goes for `__libc_csu_init` and `main`. But note that that
+
+The info column in `00590000002a`
+```console
+$ readelf -r   /usr/lib/gcc/x86_64-redhat-linux/9/../../../../lib64/crt1.o 
+Relocation section '.rela.text' at offset 0x1df8 contains 4 entries:
+  Offset          Info           Type           Sym. Value    Sym. Name + Addend
+000000000016  00590000002a R_X86_64_REX_GOTP 0000000000000000 __libc_csu_fini - 4
+...
+Now if we take the `Info` value and split it in two, the top bits is an
+index into the symbol table and the lower bits is the type of reloaction.
+So we we take `0059`, which is `89` in hex and look up that value in the
+symbol table:
+```console
+$ readelf -s   /usr/lib/gcc/x86_64-redhat-linux/9/../../../../lib64/crt1.o
+
+Symbol table '.symtab' contains 99 entries:
+   Num:    Value          Size Type    Bind   Vis      Ndx Name
+     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND 
+    ...
+    89: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND __libc_csu_fini
+```
+Which seems to makes sense that this is `__libc_csu_fini`. 
+
+### crti.o
+This is the second object file that is specified in the command earlier.
+```console
+$ objdump -d /usr/lib/gcc/x86_64-redhat-linux/9/../../../../lib64/crti.o
+
+/usr/lib/gcc/x86_64-redhat-linux/9/../../../../lib64/crti.o:     file format elf64-x86-64
+
+
+Disassembly of section .init:
+
+0000000000000000 <_init>:
+   0:	f3 0f 1e fa          	endbr64 
+   4:	48 83 ec 08          	sub    $0x8,%rsp
+   8:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # f <_init+0xf>
+   f:	48 85 c0             	test   %rax,%rax
+  12:	74 02                	je     16 <_init+0x16>
+  14:	ff d0                	callq  *%rax
+
+Disassembly of section .fini:
+
+0000000000000000 <_fini>:
+   0:	f3 0f 1e fa          	endbr64 
+   4:	48 83 ec 08          	sub    $0x8,%rsp
+```
+The source for this can be found in ~/work/gcc/glibc/sysdeps/x86_64/crti.S.
+
 
 
 ### Linker script
