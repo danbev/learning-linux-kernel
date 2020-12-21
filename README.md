@@ -1492,6 +1492,57 @@ SECTIONS
 }
 ```
 
+The script contains an ENTRY which directive? that specifies the first
+instruction to execute:
+```
+ENTRY(_start)
+```
+This is what would be overwritten if the `-e new_entry` was specified.
+
+Take a look at the `.init_array` section:
+```console
+  .init_array    :
+  {
+    PROVIDE_HIDDEN (__init_array_start = .);
+    KEEP (*(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*)))
+    KEEP (*(.init_array EXCLUDE_FILE (*crtbegin.o *crtbegin?.o *crtend.o *crtend?.o ) .ctors))
+    PROVIDE_HIDDEN (__init_array_end = .);
+  }
+```
+First the `.init_array`is specifying a section that should be created in the
+output object file.  Next this is doing it is defining a new symbol named
+`__init_array_start` and assigning it to the current address using special
+location counter '.'. So this is really just an assignement,
+ `__init_array_start = .` which is wrapped in the PROVIDE_HIDDEN command with will
+make it non-exported. PROVIDE means that it will only if it is referenced but
+not defined.
+The `KEEP` command will prevent section from being garbage collected at
+link-time if `--gc-sections` is specified.
+
+Normally, the linker will place files and sections matched by wildcards in the
+order in which they are seen during the link.
+SORT_BY_INIT_PRIORITY will sort sections into ascending numerical order of the
+GCC init_priority attribute encoded in the section name before placing them in
+the output file. In .init_array.NNNNN and .fini_array.NNNNN, NNNNN is the
+init_priority. In .ctors.NNNNN and .dtors.NNNNN, NNNNN is 65535 minus the
+init_priority. So all the .init_array.* sections from all the input object
+files will be added to this .init_array section, as well as all .ctors.*
+sections.
+And we also add all .init_array sections and .ctors sections but not from
+the *crtbegin.o, *crtbegin?.o, *crtend.o, or *crtend?.o object files.
+And finally we add another symbol named `__init_array_end` and set it's address
+to current address. So `__init_array_start` will mark the start of these included
+sections and `__init_array_end` the end.
+
+Take the following:
+```c
+int x = 10;
+```
+This will create an entry in the symbol table which holds the address of an
+int sized block of memory where the value 10 is stored.
+When this symbol is referenced the compiler generates code that first
+accesses the symbol table to find the address of the symbol's memory block
+and then code to read from that value.
 
 ### execve
 Is a system call that loads a new program into a process's memory and replaces
