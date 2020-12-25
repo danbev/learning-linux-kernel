@@ -1225,7 +1225,42 @@ Disassembly of section .fini:
    0:	f3 0f 1e fa          	endbr64 
    4:	48 83 ec 08          	sub    $0x8,%rsp
 ```
-The source for this can be found in ~/work/gcc/glibc/sysdeps/x86_64/crti.S.
+
+
+### register_tm_clones
+Is about Transacational Memory (TM) and is called from `__libc_csu_init`.
+
+```console
+$ sudo dnf install libitm
+```
+I also had to create a symbolic link to get the example working:
+```console
+$ sudo ln -s /lib64/libitm.so.1.0.0 /lib64/libitm.so
+```
+
+Next we compile the [tm.c](./tm.c) example using:
+```console
+$ gcc --verbose -L/usr/lib64 -o tm -fgnu-tm tm.c -Wl,-verbose
+```
+This does not actually work on my machine which I'm trying to figure out why.
+
+### REL vs RELA
+There are two different structures for relocations, one with two members, and
+one with an extra `addend` member:
+```c
+typedef struct {
+	Elf32_Addr		r_offset;
+	Elf32_Word		r_info;
+} Elf32_Rel;
+```
+```c
+typedef struct {
+	Elf32_Addr		r_offset;
+	Elf32_Word		r_info;
+
+	Elf32_Sword		r_addend;
+} Elf32_Rela;
+```
 
 
 
