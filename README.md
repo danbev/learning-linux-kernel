@@ -1310,7 +1310,75 @@ Next we compile the [tm.c](./tm.c) example using:
 ```console
 $ gcc --verbose -L/usr/lib64 -o tm -fgnu-tm tm.c -Wl,-verbose
 ```
-This does not actually work on my machine which I'm trying to figure out why.
+
+If we inspect the objdump of `tm` we find
+```console
+$ objdump -d tm
+
+tm:     file format elf64-x86-64
+
+
+Disassembly of section .plt:
+
+0000000000401030 <_ITM_deregisterTMCloneTable@plt>:
+  401030:	ff 25 e2 2f 00 00    	jmpq   *0x2fe2(%rip)        # 404018 <_ITM_deregisterTMCloneTable@LIBITM_1.0>
+  401036:	68 00 00 00 00       	pushq  $0x0
+  40103b:	e9 e0 ff ff ff       	jmpq   401020 <.plt>
+
+0000000000401040 <_ITM_registerTMCloneTable@plt>:
+  401040:	ff 25 da 2f 00 00    	jmpq   *0x2fda(%rip)        # 404020 <_ITM_registerTMCloneTable@LIBITM_1.0>
+  401046:	68 01 00 00 00       	pushq  $0x1
+  40104b:	e9 d0 ff ff ff       	jmpq   401020 <.plt>
+
+Disassembly of section .text:
+
+00000000004010d0 <register_tm_clones>:
+  4010d0:	be 40 40 40 00       	mov    $0x404040,%esi
+  4010d5:	48 81 ee 30 40 40 00 	sub    $0x404030,%rsi
+  4010dc:	48 89 f0             	mov    %rsi,%rax
+  4010df:	48 c1 ee 3f          	shr    $0x3f,%rsi
+  4010e3:	48 c1 f8 03          	sar    $0x3,%rax
+  4010e7:	48 01 c6             	add    %rax,%rsi
+  4010ea:	48 d1 fe             	sar    %rsi
+  4010ed:	74 11                	je     401100 <register_tm_clones+0x30>
+  4010ef:	b8 40 10 40 00       	mov    $0x401040,%eax
+  4010f4:	48 85 c0             	test   %rax,%rax
+  4010f7:	74 07                	je     401100 <register_tm_clones+0x30>
+  4010f9:	bf 30 40 40 00       	mov    $0x404030,%edi
+  4010fe:	ff e0                	jmpq   *%rax
+  401100:	c3                   	retq   
+  401101:	66 66 2e 0f 1f 84 00 	data16 nopw %cs:0x0(%rax,%rax,1)
+  401108:	00 00 00 00 
+  40110c:	0f 1f 40 00          	nopl   0x0(%rax)
+```
+
+### frame_dummy
+This function can be found in `/work/gcc/gcc/libgcc/crtstuff.c` and looks like
+this:
+```
+static void __attribute__((used)) frame_dummy (void)                                                              
+  {                                                                               
+  #ifdef USE_EH_FRAME_REGISTRY                                                    
+    static struct object object;                                                  
+  #ifdef CRT_GET_RFIB_DATA                                                        
+    void *tbase, *dbase;                                                          
+    tbase = 0;                                                                    
+    CRT_GET_RFIB_DATA (dbase);                                                    
+    if (__register_frame_info_bases)                                              
+      __register_frame_info_bases (__EH_FRAME_BEGIN__, &object, tbase, dbase);    
+  #else                                                                           
+    if (__register_frame_info)                                                    
+      __register_frame_info (__EH_FRAME_BEGIN__, &object);                        
+  #endif /* CRT_GET_RFIB_DATA */                                                  
+  #endif /* USE_EH_FRAME_REGISTRY */                                              
+                                                                                  
+  #if USE_TM_CLONE_REGISTRY                                                       
+    register_tm_clones ();                                                        
+  #endif /* USE_TM_CLONE_REGISTRY */                                              
+  }         
+```
+The `used` attribute can be specified when the compiler might otherwise ignore
+if, for example if it was not called anywhere.
 
 ### REL vs RELA
 There are two different structures for relocations, one with two members, and
