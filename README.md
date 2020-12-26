@@ -1,4 +1,5 @@
-### Learning Linux Kernel internals
+# Learning Linux Kernel internals
+
 The projects sole purpose is to help me learn about the Linux kernel.
 
 The kernel does not have have access to libc but has many functions that are
@@ -7,17 +8,20 @@ available from inside the kernel that are similar. For example, there is printk.
 The kernel stack is small and of fixed size which is configurable using a compile
 time option.
 
-### Processes
-A process is represented as a struct named [task_struct](https://github.com/torvalds/linux/blob/4a3033ef6e6bb4c566bd1d556de69b494d76976c/include/linux/sched.h#L629) which contains all the information that the kernel needs about the
+## Processes
+
+A process is represented as a struct named
+[task_struct](https://github.com/torvalds/linux/blob/4a3033ef6e6bb4c566bd1d556de69b494d76976c/include/linux/sched.h#L629) which contains all the information that the kernel needs about the
 process like the processes address space, open files, pending signals, the state
 of the process, its virtual memory space, etc).
 
+## Virtual Address Space
 
-### Virtual Address Space
 Each process has its own virtual address space and from the processes point of
 view it is the only process that exists.
 
 This address space looks something like the this:
+
 ```
    +-------------------------+ 0xffffffff
 1GB|                         |
@@ -54,6 +58,7 @@ This address space looks something like the this:
    |                         |
    +-------------------------+ 0
 ```
+
 Each process will have a virtual address space that goes from 0 to `TASK_SIZE`.
 The rest, from TASK_SIZE to 2³² or 2⁶⁴ is reserved for the kernel and is the
 same for each process. So, while the Kernel space is the same for each process
@@ -1203,6 +1208,69 @@ Which seems to makes sense that this is `__libc_csu_fini`.
 
 ### crti.o
 This is the second object file that is specified in the command earlier.
+The source for this can be found in ~/work/gcc/glibc/sysdeps/x86_64/crti.S:
+
+```assembly
+#ifndef PREINIT_FUNCTION                                                        
+# define PREINIT_FUNCTION __gmon_start__                                        
+#endif                                                                          
+                                                                                
+#ifndef PREINIT_FUNCTION_WEAK                                                   
+# define PREINIT_FUNCTION_WEAK 1                                                
+#endif                                                                          
+                                                                                
+#if PREINIT_FUNCTION_WEAK                                                       
+        weak_extern (PREINIT_FUNCTION)                                          
+#else                                                                           
+        .hidden PREINIT_FUNCTION                                                
+#endif                                                                          
+                                                                                 
+        .section .init,"ax",@progbits                                           
+        .p2align 2                                                              
+        .globl _init                                                            
+        .hidden _init                                                           
+        .type _init, @function                                                  
+_init:                                                                          
+        _CET_ENDBR                                                              
+        /* Maintain 16-byte stack alignment for called functions.  */           
+        subq $8, %rsp                                                           
+#if PREINIT_FUNCTION_WEAK                                                       
+        movq PREINIT_FUNCTION@GOTPCREL(%rip), %rax                              
+        testq %rax, %rax                                                        
+        je .Lno_weak_fn                                                         
+        call *%rax                                                              
+.Lno_weak_fn:                                                                   
+#else                                                                           
+        call PREINIT_FUNCTION                                                   
+#endif                                                                          
+                                                                                
+        .section .fini,"ax",@progbits                                           
+        .p2align 2                                                              
+        .globl _fini                                                            
+        .hidden _fini                                                           
+        .type _fini, @function                                                  
+_fini:                                                                          
+        _CET_ENDBR                                                              
+        subq $8, %rsp          
+```
+
+Lets start by looking at the symbols:
+```console
+$ nm --defined-only /usr/lib/gcc/x86_64-redhat-linux/9/../../../../lib64/crti.o
+0000000000000000 T _fini
+0000000000000000 T _init
+```
+So we can see that `_fini` and `_init` are defined.
+
+```console
+$ nm --extern-only /usr/lib/gcc/x86_64-redhat-linux/9/../../../../lib64/crti.o
+0000000000000000 T _fini
+                 U _GLOBAL_OFFSET_TABLE_
+                 w __gmon_start__
+0000000000000000 T _init
+```
+
+And we can take a look at the objdump:
 ```console
 $ objdump -d /usr/lib/gcc/x86_64-redhat-linux/9/../../../../lib64/crti.o
 
