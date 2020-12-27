@@ -2170,7 +2170,7 @@ ctor`main:
 ```console
 ->  0x401068 <+40>: call   qword ptr [rip + 0x2f82]
 ```
-This will call .annobin_libc_start.c/__libc_start_main:
+This will call `.annobin_libc_start.c/__libc_start_main`:
 ```console
 libc.so.6`.annobin_libc_start.c:
 ->  0x7ffff7e050b0 <+0>: endbr64 
@@ -2182,7 +2182,8 @@ So lets take a look at this function in a new section and take some notes
 before continuing the debugging session.
 
 ### .annobin_libc_start.c/__libc_start_main
-Can be found in /work/gcc/glibc/csu/libc-start.c.
+Can be found in /work/gcc/glibc/csu/libc-start.c. And recall that _start has
+placed all the parameters in the correct registers.
 ```c
 STATIC int                                                                      
 LIBC_START_MAIN (int (*main) (int, char **, char ** MAIN_AUXVEC_DECL),          
@@ -2203,6 +2204,14 @@ and it get linked in and the source can be found in
 extern void _init (void);                                                       
 extern void _fini (void);
 
+extern void (*__preinit_array_start []) (int, char **, char **) attribute_hidden;
+extern void (*__preinit_array_end []) (int, char **, char **) attribute_hidden;
+extern void (*__init_array_start []) (int, char **, char **) attribute_hidden;
+extern void (*__init_array_end []) (int, char **, char **) attribute_hidden;
+
+extern void (*__fini_array_start []) (void) attribute_hidden;
+extern void (*__fini_array_end []) (void) attribute_hidden;
+
 void __libc_csu_init (int argc, char **argv, char **envp) {
 
     _init ();
@@ -2212,10 +2221,24 @@ void __libc_csu_init (int argc, char **argv, char **envp) {
         (*__init_array_start [i]) (argc, argv, envp);
   }
 ```
-Notice that _init is an external function which returns void and does not
+Remeber that `__init_array_end` and `__init_array_start` were added to the
+object file by the link script (see details above).
+
+Notice that `_init` is an external function which returns void and does not
 take any arguments. I think _init can be different for dynamically linked
 and statically linked programs. 
+After that the number (size) of functions specified in the .array
 
+Debugging session continued:
+```console
+(lldb) f
+frame #0: 0x00007ffff7e050b0 libc.so.6`.annobin_libc_start.c
+libc.so.6`.annobin_libc_start.c:
+->  0x7ffff7e050b0 <+0>: endbr64 
+    0x7ffff7e050b4 <+4>: push   r14
+    0x7ffff7e050b6 <+6>: xor    eax, eax
+    0x7ffff7e050b8 <+8>: push   r13
+```
 
 ### annobin
 There is a project named Annobin which is about adding extra information to
@@ -2332,3 +2355,237 @@ $ lldb -- ctor
     frame #4: 0x00007ffff7aac12e libc.so.6`.annobin_libc_start.c + 126
     frame #5: 0x000000000040106e ctor`.annobin_init.c.hot + 46
 ```
+
+### annobin
+When I link using gcc `gcc (GCC) 9.3.1 20200408 (Red Hat 9.3.1-2)` I'm seeing
+symbols that are in a section named .annobin. As I understand it these are
+the [link to Anno plugin project](). I think these are included at link time
+from crt1.o:
+```console
+$ nm /usr/lib/gcc/x86_64-redhat-linux/9/../../../../lib64/crt1.o
+0000000000000035 t .annobin__dl_relocate_static_pie.end
+0000000000000030 t .annobin__dl_relocate_static_pie.start
+000000000000002f t .annobin_init.c
+000000000000002f t .annobin_init.c_end
+0000000000000000 t .annobin_init.c_end.exit
+0000000000000000 t .annobin_init.c_end.hot
+0000000000000000 t .annobin_init.c_end.startup
+0000000000000000 t .annobin_init.c_end.unlikely
+0000000000000000 t .annobin_init.c.exit
+0000000000000000 t .annobin_init.c.hot
+0000000000000000 t .annobin_init.c.startup
+0000000000000000 t .annobin_init.c.unlikely
+0000000000000030 t .annobin_static_reloc.c
+0000000000000035 t .annobin_static_reloc.c_end
+0000000000000000 t .annobin_static_reloc.c_end.exit
+0000000000000000 t .annobin_static_reloc.c_end.hot
+0000000000000000 t .annobin_static_reloc.c_end.startup
+0000000000000000 t .annobin_static_reloc.c_end.unlikely
+0000000000000000 t .annobin_static_reloc.c.exit
+0000000000000000 t .annobin_static_reloc.c.hot
+0000000000000000 t .annobin_static_reloc.c.startup
+0000000000000000 t .annobin_static_reloc.c.unlikely
+```
+What I find strange is that if I debug with lldb set a break point in _start
+of just disassemble _start lldb will show:
+```console
+(lldb) disassemble --name _start
+ctor`.annobin_init.c.hot:
+    0x401040 <+0>:  endbr64 
+    0x401044 <+4>:  xor    ebp, ebp
+    0x401046 <+6>:  mov    r9, rdx
+    0x401049 <+9>:  pop    rsi
+    0x40104a <+10>: mov    rdx, rsp
+    0x40104d <+13>: and    rsp, -0x10
+    0x401051 <+17>: push   rax
+    0x401052 <+18>: push   rsp
+    0x401053 <+19>: mov    r8, 0x401220
+    0x40105a <+26>: mov    rcx, 0x4011b0
+    0x401061 <+33>: mov    rdi, 0x401126
+    0x401068 <+40>: call   qword ptr [rip + 0x2f82]
+    0x40106e <+46>: hlt 
+
+(lldb) disassemble --name .annobin_init.c.hot
+ctor`.annobin_init.c.hot:
+    0x401040 <+0>:  endbr64 
+    0x401044 <+4>:  xor    ebp, ebp
+    0x401046 <+6>:  mov    r9, rdx
+    0x401049 <+9>:  pop    rsi
+    0x40104a <+10>: mov    rdx, rsp
+    0x40104d <+13>: and    rsp, -0x10
+    0x401051 <+17>: push   rax
+    0x401052 <+18>: push   rsp
+    0x401053 <+19>: mov    r8, 0x401220
+    0x40105a <+26>: mov    rcx, 0x4011b0
+    0x401061 <+33>: mov    rdi, 0x401126
+    0x401068 <+40>: call   qword ptr [rip + 0x2f82]
+    0x40106e <+46>: hlt 
+```
+```console
+$ readelf --syms ctor | grep _start
+    86: 0000000000401040    47 FUNC    GLOBAL DEFAULT   13 _start
+
+$ readelf --syms ctor | grep annobin_init.c.hot
+    36: 0000000000401040     0 NOTYPE  LOCAL  HIDDEN    13 .annobin_init.c.hot
+```
+Notice that these thow symbols point to the same address
+
+### ELF
+Sections:
+```console
+$ readelf -W -S ctor
+```
+
+```console
+$ readelf -W -t ctor
+There are 36 section headers, starting at offset 0x5628:
+
+Section Headers:
+  [Nr] Name    		       Type            Address          Off    Size   ES   Lk Inf Al Flags
+  [ 0] NULL                    NULL            0000000000000000 000000 000000 00   0   0  0 [0000000000000000]: 
+  [ 1] .interp 		       PROGBITS        00000000004002a8 0002a8 00001c 00   0   0  1 [0000000000000002]: ALLOC
+  [ 2] .note.gnu.build-id      NOTE            00000000004002c4 0002c4 000024 00   0   0  4 [0000000000000002]: ALLOC
+  [ 3] .note.ABI-tag           NOTE            00000000004002e8 0002e8 000020 00   0   0  4 [0000000000000002]: ALLOC
+  [ 4] .gnu.hash               GNU_HASH        0000000000400308 000308 00001c 00   5   0  8 [0000000000000002]: ALLOC
+  [ 5] .dynsym                 DYNSYM          0000000000400328 000328 000060 18   6   1  8 [0000000000000002]: ALLOC
+  [ 6] .dynstr                 STRTAB          0000000000400388 000388 00006c 00   0   0  1 [0000000000000002]: ALLOC
+  [ 7] .gnu.version            VERSYM          00000000004003f4 0003f4 000008 02   5   0  2 [0000000000000002]: ALLOC
+  [ 8] .gnu.version_r          VERNEED         0000000000400400 000400 000020 00   6   1  8 [0000000000000002]: ALLOC
+  [ 9] .rela.dyn               RELA            0000000000400420 000420 000030 18   5   0  8 [0000000000000002]: ALLOC
+  [10] .rela.plt               RELA            0000000000400450 000450 000018 18   5  22  8 [0000000000000042]: ALLOC, INFO LINK
+  [11] .init                   PROGBITS        0000000000401000 001000 00001b 00   0   0  4 [0000000000000006]: ALLOC, EXEC
+  [12] .plt                    PROGBITS        0000000000401020 001020 000020 10   0   0 16 [0000000000000006]: ALLOC, EXEC
+  [13] .text                   PROGBITS        0000000000401040 001040 0001e5 00   0   0 16 [0000000000000006]: ALLOC, EXEC
+  [14] .fini                   PROGBITS        0000000000401228 001228 00000d 00   0   0  4 [0000000000000006]: ALLOC, EXEC
+  [15] .rodata                 PROGBITS        0000000000402000 002000 000010 00   0   0  8 [0000000000000002]: ALLOC
+  [16] .eh_frame_hdr           PROGBITS        0000000000402010 002010 00005c 00   0   0  4 [0000000000000002]: ALLOC
+  [17] .eh_frame               PROGBITS        0000000000402070 002070 000168 00   0   0  8 [0000000000000002]: ALLOC
+  [18] .init_array             INIT_ARRAY      0000000000403dd8 002dd8 000010 08   0   0  8 [0000000000000003]: WRITE, ALLOC
+  [19] .fini_array             FINI_ARRAY      0000000000403de8 002de8 000008 08   0   0  8 [0000000000000003]: WRITE, ALLOC
+  [20] .dynamic                DYNAMIC         0000000000403df0 002df0 000200 10   6   0  8 [0000000000000003]: WRITE, ALLOC
+  [21] .got                    PROGBITS        0000000000403ff0 002ff0 000010 08   0   0  8 [0000000000000003]: WRITE, ALLOC
+  [22] .got.plt                PROGBITS        0000000000404000 003000 000020 08   0   0  8 [0000000000000003]: WRITE, ALLOC
+  [23] .data                   PROGBITS        0000000000404020 003020 000004 00   0   0  1 [0000000000000003]: WRITE, ALLOC
+  [24] .bss                    NOBITS          0000000000404024 003024 000004 00   0   0  1 [0000000000000003]: WRITE, ALLOC
+  [25] .comment                PROGBITS        0000000000000000 003024 000058 01   0   0  1 [0000000000000030]: MERGE, STRINGS
+  [26] .gnu.build.attributes                   0000000000406028 00307c 00107c 00   0   0  4 [0000000000000000]: 
+  [27] .debug_aranges          PROGBITS        0000000000000000 0040f8 000050 00   0   0  1 [0000000000000000]: 
+  [28] .debug_info             PROGBITS        0000000000000000 004148 0001d7 00   0   0  1 [0000000000000000]: 
+  [29] .debug_abbrev           PROGBITS        0000000000000000 00431f 00014b 00   0   0  1 [0000000000000000]: 
+  [30] .debug_line             PROGBITS        0000000000000000 00446a 000079 00   0   0  1 [0000000000000000]: 
+  [31] .debug_str              PROGBITS        0000000000000000 0044e3 000164 01   0   0  1 [0000000000000030]: MERGE, STRINGS
+  [32] .debug_ranges           PROGBITS        0000000000000000 004647 000040 00   0   0  1 [0000000000000000]: 
+  [33] .symtab                 SYMTAB          0000000000000000 004688 000930 18  34  75  8 [0000000000000000]: 
+  [34] .strtab                 STRTAB          0000000000000000 004fb8 000502 00   0   0  1 [0000000000000000]: 
+  [35] .shstrtab               STRTAB          0000000000000000 0054ba 000167 00   0   0  1 [0000000000000000]: 
+```
+Notice that the `Lk` are links to other Section `Nr` s. So we can see that
+`.symtab` links to `34` which is `.strtab`.
+
+
+Could it be that when we set a break point in lldb and specify _start that will
+work and the address used will be 0000000000401040, but when lldb later
+breaks it will use the first name in the .symtab with that address:
+```console
+Section Headers:                                                                
+  [Nr] Name              Type            Address          Off    Size   ES Flg Lk Inf Al
+  [13] .text             PROGBITS        0000000000401040 001040 0001e5 00  AX  0   0 16
+
+Symbol table '.symtab' contains 98 entries:                                     
+   Num:    Value          Size Type    Bind   Vis      Ndx Name
+    13: 0000000000401040     0 SECTION LOCAL  DEFAULT   13
+    36: 0000000000401040     0 NOTYPE  LOCAL  HIDDEN    13 .annobin_init.c.hot
+    86: 0000000000401040    47 FUNC    GLOBAL DEFAULT   13 _start 
+```
+
+### symbol table
+
+```console
+0000000000401106 <main>:
+  401106:	55                   	push   %rbp
+  401107:	48 89 e5             	mov    %rsp,%rbp
+  40110a:	89 7d fc             	mov    %edi,-0x4(%rbp)
+  40110d:	48 89 75 f0          	mov    %rsi,-0x10(%rbp)
+  401111:	48 c7 c0 20 40 40 00 	mov    $0x404020,%rax
+```
+Notice the value of this move which is `404020` which we can find in the 
+symbol table.
+```console
+$ readelf -s offset
+22: 000000000040401c     0 SECTION LOCAL  DEFAULT   22
+...
+68: 0000000000404020     4 OBJECT  GLOBAL DEFAULT   22 something
+...
+```
+So the entry `something` refers/links to entry `22` which is in the `.bss`
+section and notice that the address matches `000000000040401c`:
+```console
+$ objdump -d -j .bss offset
+
+offset:     file format elf64-x86-64
+
+
+Disassembly of section .bss:
+
+000000000040401c <__bss_start>:
+  40401c:	00 00                	add    %al,(%rax)
+	...
+
+0000000000404020 <something>:
+	...
+```
+Just to be clear this file was linked into an executable so the linker
+would do this work. If we only compile the file we will see the following
+in the .text section:
+```console
+$ gcc -fPIC -o offset -c offset.c 
+$ objdump -d -j .text offset
+
+offset:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+0000000000000000 <main>:
+   0:	55                   	push   %rbp
+   1:	48 89 e5             	mov    %rsp,%rbp
+   4:	89 7d fc             	mov    %edi,-0x4(%rbp)
+   7:	48 89 75 f0          	mov    %rsi,-0x10(%rbp)
+   b:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 12 <main+0x12>
+  12:	c7 00 12 00 00 00    	movl   $0x12,(%rax)
+  18:	b8 00 00 00 00       	mov    $0x0,%eax
+  1d:	5d                   	pop    %rbp
+  1e:	c3                   	retq
+```
+So there should be an entry in the relocation table for this:
+```console
+$ readelf -r offset
+
+Relocation section '.rela.text' at offset 0x200 contains 1 entry:
+  Offset          Info           Type           Sym. Value    Sym. Name + Addend
+00000000000e  00080000002a R_X86_64_REX_GOTP 0000000000000004 something - 4
+
+Relocation section '.rela.eh_frame' at offset 0x218 contains 1 entry:
+  Offset          Info           Type           Sym. Value    Sym. Name + Addend
+000000000020  000200000002 R_X86_64_PC32     0000000000000000 .text + 0
+```
+
+And we can inspect the symbol table for this object file using:
+```console
+$ readelf -s offset
+
+Symbol table '.symtab' contains 11 entries:
+   Num:    Value          Size Type    Bind   Vis      Ndx Name
+     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND 
+     1: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS offset.c
+     2: 0000000000000000     0 SECTION LOCAL  DEFAULT    1 
+     3: 0000000000000000     0 SECTION LOCAL  DEFAULT    3 
+     4: 0000000000000000     0 SECTION LOCAL  DEFAULT    4 
+     5: 0000000000000000     0 SECTION LOCAL  DEFAULT    6 
+     6: 0000000000000000     0 SECTION LOCAL  DEFAULT    7 
+     7: 0000000000000000     0 SECTION LOCAL  DEFAULT    5 
+     8: 0000000000000004     4 OBJECT  GLOBAL DEFAULT  COM something
+     9: 0000000000000000    31 FUNC    GLOBAL DEFAULT    1 main
+    10: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND _GLOBAL_OFFSET_TABLE_
+```
+
