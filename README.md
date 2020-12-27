@@ -1356,29 +1356,105 @@ Disassembly of section .text:
 This function can be found in `/work/gcc/gcc/libgcc/crtstuff.c` and looks like
 this:
 ```
-static void __attribute__((used)) frame_dummy (void)                                                              
-  {                                                                               
-  #ifdef USE_EH_FRAME_REGISTRY                                                    
-    static struct object object;                                                  
-  #ifdef CRT_GET_RFIB_DATA                                                        
-    void *tbase, *dbase;                                                          
-    tbase = 0;                                                                    
-    CRT_GET_RFIB_DATA (dbase);                                                    
-    if (__register_frame_info_bases)                                              
-      __register_frame_info_bases (__EH_FRAME_BEGIN__, &object, tbase, dbase);    
-  #else                                                                           
-    if (__register_frame_info)                                                    
-      __register_frame_info (__EH_FRAME_BEGIN__, &object);                        
-  #endif /* CRT_GET_RFIB_DATA */                                                  
-  #endif /* USE_EH_FRAME_REGISTRY */                                              
-                                                                                  
-  #if USE_TM_CLONE_REGISTRY                                                       
-    register_tm_clones ();                                                        
-  #endif /* USE_TM_CLONE_REGISTRY */                                              
-  }         
+static void __attribute__((used)) frame_dummy (void)
+{
+  #ifdef USE_EH_FRAME_REGISTRY
+    static struct object object;
+  #ifdef CRT_GET_RFIB_DATA
+    void *tbase, *dbase;
+    tbase = 0;
+    CRT_GET_RFIB_DATA (dbase);
+    if (__register_frame_info_bases)
+      __register_frame_info_bases (__EH_FRAME_BEGIN__, &object, tbase, dbase);
+  #else
+    if (__register_frame_info)
+      __register_frame_info (__EH_FRAME_BEGIN__, &object);
+  #endif /* CRT_GET_RFIB_DATA */
+  #endif /* USE_EH_FRAME_REGISTRY */
+
+  #if USE_TM_CLONE_REGISTRY
+    register_tm_clones ();
+  #endif /* USE_TM_CLONE_REGISTRY */
+}
 ```
 The `used` attribute can be specified when the compiler might otherwise ignore
 if, for example if it was not called anywhere.
+
+Lets set a breakpoint and see what is happening this this function.
+
+```console
+$ lldb -- ./simplec
+(lldb) br s  -n frame_dummy
+(lldb) r
+(lldb) disassemble -n frame_dummy
+simplec`frame_dummy:
+->  0x401100 <+0>: endbr64 
+    0x401104 <+4>: jmp    0x401090                  ; register_tm_clones
+```
+So we can see that the `USE_EH_FRAME_REGISTRY` was not set and the only
+thing that is happening is that `register_tm_clones` is getting called.
+
+
+### eh_frame
+Languages that support exceptions, like C++, and is used to describe how to
+set registers to restore the previous call frame at runtime.
+
+```console
+$ g++ -g -o eh_frame eh_frame.cc
+$ ./ef_frame
+$ echo $?
+2
+```
+
+```console
+0000000000401176 <main>:
+  401176:	55                   	push   %rbp
+  401177:	48 89 e5             	mov    %rsp,%rbp
+  40117a:	53                   	push   %rbx
+  40117b:	48 83 ec 28          	sub    $0x28,%rsp
+  40117f:	89 7d dc             	mov    %edi,-0x24(%rbp)
+  401182:	48 89 75 d0          	mov    %rsi,-0x30(%rbp)
+  401186:	bf 04 00 00 00       	mov    $0x4,%edi
+  40118b:	e8 b0 fe ff ff       	callq  401040 <__cxa_allocate_exception@plt>
+  401190:	c7 00 02 00 00 00    	movl   $0x2,(%rax)
+  401196:	ba 00 00 00 00       	mov    $0x0,%edx
+  40119b:	be e0 3d 40 00       	mov    $0x403de0,%esi
+  4011a0:	48 89 c7             	mov    %rax,%rdi
+  4011a3:	e8 c8 fe ff ff       	callq  401070 <__cxa_throw@plt>
+  4011a8:	48 83 fa 01          	cmp    $0x1,%rdx
+  4011ac:	74 08                	je     4011b6 <main+0x40>
+  4011ae:	48 89 c7             	mov    %rax,%rdi
+  4011b1:	e8 ca fe ff ff       	callq  401080 <_Unwind_Resume@plt>
+  4011b6:	48 89 c7             	mov    %rax,%rdi
+  4011b9:	e8 72 fe ff ff       	callq  401030 <__cxa_begin_catch@plt>
+  4011be:	8b 00                	mov    (%rax),%eax
+  4011c0:	89 45 ec             	mov    %eax,-0x14(%rbp)
+  4011c3:	8b 5d ec             	mov    -0x14(%rbp),%ebx
+  4011c6:	e8 85 fe ff ff       	callq  401050 <__cxa_end_catch@plt>
+  4011cb:	89 d8                	mov    %ebx,%eax
+  4011cd:	48 83 c4 28          	add    $0x28,%rsp
+  4011d1:	5b                   	pop    %rbx
+  4011d2:	5d                   	pop    %rbp
+  4011d3:	c3                   	retq   
+  4011d4:	66 2e 0f 1f 84 00 00 	nopw   %cs:0x0(%rax,%rax,1)
+  4011db:	00 00 00 
+  4011de:	66 90                	xchg   %ax,%ax
+````
+When we use `throw` first an exception is allocated to be thrown:
+```
+40118b:	e8 b0 fe ff ff       	callq  401040 <__cxa_allocate_exception@plt>
+```
+Followed by `__cxa_throw@plt` which start the exception handling:
+```
+4011a3:	e8 c8 fe ff ff       	callq  401070 <__cxa_throw@plt>
+```
+
+The eh_frame contains Call Frame Information (CFI) and this is the information
+required to be generated by the compiler to enable stack unwinding. 
+
+
+Disabling -fno-unwind-tables
+
 
 ### REL vs RELA
 There are two different structures for relocations, one with two members, and
