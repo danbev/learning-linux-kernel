@@ -6,3 +6,6 @@ simple
 a.out
 *.o
 dwarf
+eh_frame
+startups
+tm
