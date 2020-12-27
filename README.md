@@ -1399,6 +1399,122 @@ typedef struct {
 ```
 
 
+### DWARF section
+I used for debugging information. These sections can be viewed using readelf:
+
+Lets take a look at the section headers releated to debugging:
+```console
+$ objdump -wh dwarf 
+
+dwarf:     file format elf64-x86-64
+
+Sections:
+Idx Name                  Size      VMA               LMA               File off  Algn  Flags
+ ...
+ 26 .debug_aranges        00000030  0000000000000000  0000000000000000  000040f8  2**0  CONTENTS, READONLY, DEBUGGING
+ 27 .debug_info           00000380  0000000000000000  0000000000000000  00004128  2**0  CONTENTS, READONLY, DEBUGGING
+ 28 .debug_abbrev         00000137  0000000000000000  0000000000000000  000044a8  2**0  CONTENTS, READONLY, DEBUGGING
+ 29 .debug_line           00000119  0000000000000000  0000000000000000  000045df  2**0  CONTENTS, READONLY, DEBUGGING
+ 30 .debug_str            0000028d  0000000000000000  0000000000000000  000046f8  2**0  CONTENTS, READONLY, DEBUGGING
+```
+So these sections would be something that the debugger looks at for example.
+
+`.debug_aranges` is a lookup table of addresses to compilation units.
+
+
+```console
+$ objdump --dwarf=info dwarf
+ <1><329>: Abbrev Number: 18 (DW_TAG_subprogram)                                
+    <32a>   DW_AT_external    : 1                                               
+    <32a>   DW_AT_name        : (indirect string, offset: 0x18): something         
+    <32e>   DW_AT_decl_file   : 1                                               
+    <32f>   DW_AT_decl_line   : 3                                               
+    <330>   DW_AT_decl_column : 6                                               
+    <331>   DW_AT_prototyped  : 1                                               
+    <331>   DW_AT_low_pc      : 0x401126                                        
+    <339>   DW_AT_high_pc     : 0x41                                            
+    <341>   DW_AT_frame_base  : 1 byte block: 9c        (DW_OP_call_frame_cfa)  
+    <343>   DW_AT_GNU_all_tail_call_sites: 1                                    
+ <2><343>: Abbrev Number: 19 (DW_TAG_formal_parameter)                          
+    <344>   DW_AT_name        : x                                               
+    <346>   DW_AT_decl_file   : 1                                               
+    <347>   DW_AT_decl_line   : 3                                               
+    <348>   DW_AT_decl_column : 20                                              
+    <349>   DW_AT_type        : <0x65>                                          
+    <34d>   DW_AT_location    : 2 byte block: 91 5c     (DW_OP_fbreg: -36)         
+ <2><350>: Abbrev Number: 20 (DW_TAG_variable)                                  
+    <351>   DW_AT_name        : (indirect string, offset: 0x10f): local         
+    <355>   DW_AT_decl_file   : 1                                               
+    <356>   DW_AT_decl_line   : 4                                               
+    <357>   DW_AT_decl_column : 7                                               
+    <358>   DW_AT_type        : <0x65>                                          
+    <35c>   DW_AT_location    : 2 byte block: 91 68     (DW_OP_fbreg: -24)    
+```
+Notice that there is a `DW_TAG_subprogram` for the something function, and
+the `DW_AT_low_pc` is `0x401126` which is the start address of the something
+function.
+The leading numbers in angle brackets declare a scope, so something is in the
+first scope and the parameter x and the local variable are nested in that scope
+hence the 2.
+```console
+$ objdump --disassemble=something dwarf
+
+dwarf:     file format elf64-x86-64
+
+
+Disassembly of section .init:
+
+Disassembly of section .plt:
+
+Disassembly of section .text:
+
+0000000000401126 <something>:
+  401126:	55                   	push   %rbp
+  401127:	48 89 e5             	mov    %rsp,%rbp
+  40112a:	48 83 ec 20          	sub    $0x20,%rsp
+  40112e:	89 7d ec             	mov    %edi,-0x14(%rbp)
+  401131:	8b 45 ec             	mov    -0x14(%rbp),%eax
+  401134:	83 c0 0a             	add    $0xa,%eax
+  401137:	89 45 f8             	mov    %eax,-0x8(%rbp)
+  40113a:	c7 45 fc 00 00 00 00 	movl   $0x0,-0x4(%rbp)
+  401141:	eb 18                	jmp    40115b <something+0x35>
+  401143:	8b 45 fc             	mov    -0x4(%rbp),%eax
+  401146:	89 c6                	mov    %eax,%esi
+  401148:	bf 10 20 40 00       	mov    $0x402010,%edi
+  40114d:	b8 00 00 00 00       	mov    $0x0,%eax
+  401152:	e8 d9 fe ff ff       	callq  401030 <printf@plt>
+  401157:	83 45 fc 01          	addl   $0x1,-0x4(%rbp)
+  40115b:	8b 45 fc             	mov    -0x4(%rbp),%eax
+  40115e:	3b 45 f8             	cmp    -0x8(%rbp),%eax
+  401161:	7c e0                	jl     401143 <something+0x1d>
+  401163:	90                   	nop
+  401164:	90                   	nop
+  401165:	c9                   	leaveq 
+  401166:	c3                   	retq   
+```
+And also notice that the int parameter to something is specified as the type
+`DW_TAG_formal_parameter` and that `DW_AT_decl_line` specifies the line in the
+source code file.
+
+
+```console
+$ readelf -w dwarf
+Contents of the .eh_frame section:
+
+
+00000000 0000000000000014 00000000 CIE
+  Version:               1
+  Augmentation:          "zR"
+  Code alignment factor: 1
+  Data alignment factor: -8
+  Return address column: 16
+  Augmentation data:     1b
+  DW_CFA_def_cfa: r7 (rsp) ofs 8
+  DW_CFA_offset: r16 (rip) at cfa-8
+  DW_CFA_nop
+  DW_CFA_nop
+```
+
 
 ### Linker script
 Before we dig into and step through the startup progres we need to consider

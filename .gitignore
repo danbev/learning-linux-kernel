@@ -5,3 +5,4 @@ mmap
 simple
 a.out
 *.o
+dwarf
