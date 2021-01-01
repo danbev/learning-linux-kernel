@@ -909,6 +909,8 @@ an entry in the .eh_frame.
 The call frame is identified by an address on the stack. We refer to this
 address as the Canonical Frame Address or CFA. Note that we pushed 
 
+
+
 ### Memory
 When a call malloc, brk, sbrk, or mmap we are only reserving virtual memory
 and not physical RAM. The physical RAM will be used when a read/write occurs
@@ -1476,7 +1478,7 @@ typedef struct {
 
 
 ### DWARF section
-I used for debugging information. These sections can be viewed using readelf:
+Are used for debugging information. These sections can be viewed using readelf:
 
 Lets take a look at the section headers releated to debugging:
 ```console
@@ -2588,4 +2590,88 @@ Symbol table '.symtab' contains 11 entries:
      9: 0000000000000000    31 FUNC    GLOBAL DEFAULT    1 main
     10: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND _GLOBAL_OFFSET_TABLE_
 ```
+
+### Call Frame Information (CFI)
+So, when we compile a simple c program with `-g` we will see a number of
+assembler directives (in this case GNU assembly directives) in the file. For
+example:
+```console
+$ gcc -g -S simple.c
+
+.LFB0:
+       .file 1 "simple.c"
+       .loc 1 1 33
+       .cfi_startproc
+```
+Where to these come from?  
+As far as I can tell these originate from `../gcc/gcc/dwarf2out.c`
+
+```c
+static int maybe_emit_file (struct dwarf_file_data * fd) {
+  ...
+  if (output_asm_line_debug_info ()){
+          fprintf (asm_out_file, "\t.file %u ", fd->emitted_number);
+          output_quoted_string (asm_out_file, remap_debug_filename (fd->filename));
+          fputc ('\n', asm_out_file);
+        }
+}
+```
+
+For example:
+```
+.loc 1 1 33
+```
+would be outputted by the following function:
+```c
+static void dwarf2out_source_line (unsigned int line, unsigned int column,
+                                   const char *filename,
+                                   int discriminator, bool is_stmt)
+  ...
+    if (output_asm_line_debug_info ())
+    {
+      fputs ("\t.loc ", asm_out_file);
+      fprint_ul (asm_out_file, file_num);
+      putc (' ', asm_out_file);
+      fprint_ul (asm_out_file, line);
+      putc (' ', asm_out_file);
+      fprint_ul (asm_out_file, column);
+```
+
+`cfi_startproc` is specified for each function that should have an entry in
+.eh_frame (for frame unwinding) and should be closed with a `.cfi_endproc`. So
+this would be in the generated assembly file without the `-g` flag.
+This will create a Call Frame Information (CFI) table for this function.
+
+```
+pushq   %rbp 
+.cfi_def_cfa_offset 16
+```
+What I think this is doing is that it is adjusting the register that is used
+for the canonical frame address (CFA) because we have pushed a rbp onto the
+stack.
+
+Next we have
+```
+.cfi_offset 6, -16
+```
+The first argument is a register number 6. 
+```
+General Purpose Register RAX 	0 %rax
+General Purpose Register RDX 	1 %rdx
+General Purpose Register RCX 	2 %rcx
+General Purpose Register RBX 	3 %rbx
+General Purpose Register RSI 	4 %rsi
+General Purpose Register RDI 	5 %rdi
+Frame Pointer Register RBP 	6 %rbp
+Stack Pointer Register RSP 	7 %rsp
+Extended Integer Registers 	8-15 8-15 %r8–%r15
+```
+
+Just a note about the label `.LFB0` where L is just a prefix and FB is
+function begin, followed by a number. There can alse be fuction end (.LFE0).
+
+### Canonical Frame Address (CFA)
+This is the value of the stack pointer (rsp) before the called function. This
+is what we would normally use in the function prolouge.
+
 
