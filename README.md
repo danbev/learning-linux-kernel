@@ -2592,9 +2592,15 @@ Symbol table '.symtab' contains 11 entries:
 ```
 
 ### Call Frame Information (CFI)
-So, when we compile a simple c program with `-g` we will see a number of
-assembler directives (in this case GNU assembly directives) in the file. For
-example:
+These are assembler directives that get generated to support debugging/exception
+handling by storing information about the base/stack pointer to enable stack
+unwinding. One might think that this would be possible without having this
+information by just following the stack base pointer that is store/reset
+but there is no guarantee that function do this, or one might want to use rpb
+for something else. So this enable stack unwinding without depending on the
+function prologue/epiloge.
+
+For example:
 ```console
 $ gcc -g -S simple.c
 
@@ -2654,7 +2660,10 @@ Next we have
 ```
 .cfi_offset 6, -16
 ```
-The first argument is a register number 6. 
+The first argument is a register number 6, which is rbp and what this is doing
+is noting that rbp is being saved on the stack and how to find it.
+
+The following are register names to register numbers:
 ```
 General Purpose Register RAX 	0 %rax
 General Purpose Register RDX 	1 %rdx
@@ -2666,6 +2675,60 @@ Frame Pointer Register RBP 	6 %rbp
 Stack Pointer Register RSP 	7 %rsp
 Extended Integer Registers 	8-15 8-15 %r8–%r15
 ```
+
+So what information is generated for these directives in the object file
+created?  
+
+Well, we can inspect the CFI using objdump:
+```console
+$ objdump -W simplec 
+
+simplec:     file format elf64-x86-64
+
+Contents of the .eh_frame section:
+
+
+00000000 0000000000000014 00000000 CIE
+  Version:               1
+  Augmentation:          "zR"
+  Code alignment factor: 1
+  Data alignment factor: -8
+  Return address column: 16
+  Augmentation data:     1b
+  DW_CFA_def_cfa: r7 (rsp) ofs 8
+  DW_CFA_offset: r16 (rip) at cfa-8
+  DW_CFA_nop
+  DW_CFA_nop
+
+00000040 000000000000001c 00000044 FDE cie=00000000 pc=0000000000401106..0000000000401118
+  DW_CFA_advance_loc: 1 to 0000000000401107
+  DW_CFA_def_cfa_offset: 16
+  DW_CFA_offset: r6 (rbp) at cfa-16
+  DW_CFA_advance_loc: 3 to 000000000040110a
+  DW_CFA_def_cfa_register: r6 (rbp)
+  DW_CFA_advance_loc: 13 to 0000000000401117
+  DW_CFA_def_cfa: r7 (rsp) ofs 8
+  DW_CFA_nop
+  DW_CFA_nop
+  DW_CFA_nop
+```
+FDE stands for Frame Description Entry and the range that this entry covers
+is specified by the DW_CFA_advance_loc properties. Notice that these address of
+DW_CFA_advance_loc match instructions that modify the base or stack pointer:
+```console
+0000000000401106 <main>:                                                        
+  401106:       55                      push   %rbp                             
+  401107:       48 89 e5                mov    %rsp,%rbp                        
+  40110a:       89 7d fc                mov    %edi,-0x4(%rbp)                  
+  40110d:       48 89 75 f0             mov    %rsi,-0x10(%rbp)                 
+  401111:       b8 00 00 00 00          mov    $0x0,%eax                        
+  401116:       5d                      pop    %rbp                             
+  401117:       c3                      retq                                    
+  401118:       0f 1f 84 00 00 00 00    nopl   0x0(%rax,%rax,1)                 
+  40111f:       00 
+```
+
+Common Information Entry (CIE).
 
 Just a note about the label `.LFB0` where L is just a prefix and FB is
 function begin, followed by a number. There can alse be fuction end (.LFE0).
