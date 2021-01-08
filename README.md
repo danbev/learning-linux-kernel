@@ -2731,7 +2731,7 @@ DW_CFA_advance_loc match instructions that modify the base or stack pointer:
 Common Information Entry (CIE).
 
 Just a note about the label `.LFB0` where L is just a prefix and FB is
-function begin, followed by a number. There can alse be fuction end (.LFE0).
+Function Begin, followed by a number. There can alse be Function End (.LFE0).
 
 ### Canonical Frame Address (CFA)
 This is the value of the stack pointer (rsp) before the called function. This
