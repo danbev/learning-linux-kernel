@@ -68,6 +68,7 @@ The Memory Management Unit (MMU), which is a hardware component, manages virtual
 addresses by mapping virtual addresses to physical addresses, and also provides
 protection by check privileges.
 
+### Page table
 ```
     32        22 21  12 11      0
     +---------------------------+                      +-------------------+
