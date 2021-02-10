@@ -490,7 +490,8 @@ for commands and executes them as they are entered. This will eventually call
 int execve(const char *filename, char *const argv [], char *const envp[]);
 ```
 We can find the implmentation of [execve](https://github.com/torvalds/linux/blob/575966e080270b7574175da35f7f7dd5ecd89ff4/fs/exec.c#L1878)
-in fs/exec.c.
+in fs/exec.c. The `v` at the end of exec stands for argv, and the `e` stands
+for the envp argumnets.
 
 We can use `strace` to see this for our example:
 ```console
