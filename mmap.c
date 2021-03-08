@@ -2,7 +2,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
- 
+// dummy comment 
 int main(void) {
   size_t pagesize = getpagesize();
   printf("System page size: %zu bytes\n", pagesize);
