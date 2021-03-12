@@ -2740,3 +2740,108 @@ This is the value of the stack pointer (rsp) before the called function. This
 is what we would normally use in the function prolouge.
 
 
+### IRQ (Interrupt Requests)
+There are two types of these requests, long and short ones.
+
+### Auxiliary vector
+An example can be found in [auxv.c](./auxv).
+
+```console
+$ env LD_SHOW_AUXV=1 ./init
+AT_SYSINFO_EHDR:      0x7ffff7fcf000
+AT_HWCAP:             bfebfbff
+AT_PAGESZ:            4096
+AT_CLKTCK:            100
+AT_PHDR:              0x400040
+AT_PHENT:             56
+AT_PHNUM:             11
+AT_BASE:              0x7ffff7fd1000
+AT_FLAGS:             0x0
+AT_ENTRY:             0x401040
+AT_UID:               1000
+AT_EUID:              1000
+AT_GID:               1000
+AT_EGID:              1000
+AT_SECURE:            0
+AT_RANDOM:            0x7fffffffd619
+AT_HWCAP2:            0x0
+AT_EXECFN:            ./init
+AT_PLATFORM:          x86_64
+some_constructor
+main
+```
+The same information can also be found in /proc/pid/auxv.
+
+### AT_PHDR
+Is the location of the program header.
+
+### AT_ENTRY
+Is the entry point address for this executable.
+
+#### AT_SECURE 
+Recall that the real user id is the uid of the user that started the
+process.
+```console
+$ sudo setcap cap_setuid=ep ./auxv
+
+$ getcap ./auxv
+$ ./auxv = cap_setuid+ep
+```
+e=effecitve, p=permitted, 
+```console
+$ env LD_SHOW_AUXV=1 ./auxv 
+uid: 1000
+gid: 1000
+AT_SECURE: 1
+```
+Notice that we don't get any output from the environment variables.
+
+```
+$ env -i NODE_EXTRA=bajja ./auxv 
+AT_SECURE: 1
+env vars:
+NODE_EXTRA=bajja
+uid: 1000
+gid: 1000
+```
+
+So that we setting the setuid capability, but will setting any capabilitiy set AT_SECURE?
+```console
+$ env -i NODE_EXTRA=bajja ./auxv 
+AT_SECURE: 0
+uid: 1000
+euid: 1000
+gid: 1000
+gid: 1000
+env vars:
+NODE_EXTRA=bajja
+
+$ sudo setcap cap_net_bind_service+ep ./auxv
+
+$ env -i NODE_EXTRA=bajja ./auxv 
+AT_SECURE: 1
+uid: 1000
+euid: 1000
+gid: 1000
+gid: 1000
+not allowed to show env vars
+```
+
+```
+$ sudo chown root:root auxv
+[sudo] password for danielbevenius: 
+$ ls -l auxv
+-rwxrwxr-x. 1 root root 25192 Mar 12 08:40 auxv
+
+$ sudo chmod u+s auxv
+$ ls -l auxv
+-rwsrwxr-x. 1 root root 25192 Mar 12 08:40 auxv
+
+$ env -i NODE_EXTRA=bajja ./auxv 
+AT_SECURE: 1
+uid: 1000
+euid: 0
+gid: 1000
+gid: 1000
+not allowed to show env vars
+```
