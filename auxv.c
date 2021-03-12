@@ -11,7 +11,7 @@ int main(int argc, char** argv, char** environ) {
   printf("uid: %d\n", uid);
   printf("euid: %d\n", geteuid());
   printf("gid: %d\n", gid);
-  printf("gid: %d\n", getegid());
+  printf("egid: %d\n", getegid());
 
   if (at_secure || uid != geteuid() || gid != getegid()) {
     printf("not allowed to show env vars\n");
