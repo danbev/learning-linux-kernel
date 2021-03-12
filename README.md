@@ -2845,3 +2845,46 @@ gid: 1000
 gid: 1000
 not allowed to show env vars
 ```
+
+### LD tokens
+There are a few tokens that the ld will expend. For example $ORIGIN will
+expand to the directory of the where the compiled application lives.
+
+### LD secure execution mode
+A binary is said to execute in secure-execution mode if AT_SECURE is set.
+
+
+### Real user id
+The logged in user
+```console
+$ id -ru
+1000
+$ id -run
+danielbevenius
+$ logname
+danielbevenius
+```
+
+
+### Effective user id
+If we switch users then we can check after the switch the current user id
+using `whoami` which shows the same as the command `id -un`.
+So this would be the user id reported after using the substitute user and group
+command `su`. 
+```console
+$ su -
+Password: 
+[root@localhost ~]# id -un
+root
+[root@localhost ~]# whoami
+root
+[root@localhost ~]# logname
+danielbevenius
+```
+Notice that `logname` will always show the real user id.
+
+### Capabilities
+Where introduced to give more fine grained control to processes that need to
+have higher permissions without having to be setuid.
+
+
