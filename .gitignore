@@ -9,3 +9,4 @@ dwarf
 eh_frame
 startups
 tm
+auxv
