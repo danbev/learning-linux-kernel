@@ -2929,7 +2929,18 @@ be easy to think that it is just a matter of using & to find out. But this is
 not the case and one has to use CAP_TO_MASK(CAP_NET_BIND_SERVICE) to get the
 correct value before using AND.
 See example in [cap.c](./cap.c).
-
+```console
+$ make cap
+$ sudo setcap cap_net_broadcast,cap_net_bind_service+ep ./cap
+$ getcap ./cap
+./cap = cap_net_bind_service,cap_net_broadcast+ep
+$ ./cap 
+Effective set: 0000000000000c00 
+Permitted set: 0000000000000c00 
+Inherited set: 0000000000000000 
+CAP_TO_MASK(CAP_NET_BIND_SERVICE): 0000000000000400
+Has CAP_NET_BIND_SERVICE: 0000000000000400
+```
 
 If you have a hex value and want fo find the cababilities for them one can
 use `capsh`:
