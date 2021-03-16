@@ -1,10 +1,7 @@
-#include <sys/auxv.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
-#include <sys/types.h>
 #include <sys/capability.h>
-#include <sys/prctl.h>
 
 int main(int argc, char** argv, char** environ) {
   /* Example of using caplib
