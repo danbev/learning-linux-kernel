@@ -2886,5 +2886,92 @@ Notice that `logname` will always show the real user id.
 ### Capabilities
 Where introduced to give more fine grained control to processes that need to
 have higher permissions without having to be setuid.
+So setuid can be set using `chmod u+s` on a binary will make that the effective
+user of when a process starts and the executable object file is loaded into
+memory an executed. This is an all or nothing thing, we get all the permissions
+or none.
+
+Remember that when a new process is to be created the `fork` call be called
+which will make a copy of the current process. During this process the
+capabilities will be copied. Normally `excecve` will be called which will
+replace the copied process (the address spaces) with the image read from the
+executable object file. If the binary has the setuid set all permitted and
+effective capabilities are enabled.
+
+```
++------------------------------------+
+|         forked process             |                 
+| Effective set [0000000000000000]   |
+| Permitted set [0000000000000000]   |
+| Inherited set [0000000000000000]   |r----+
+| Ambient set   [0000000000000000]   |-----|---+
++------------------------------------+     |   |
+          execve                           |   |
+            ↓                              |   |
++------------------------------------+     |   |
+|         forked process             |     |   |       
+| Effective set [0000000000000000]←+ |     |   |
+| Permitted set [0000000000000000]←+ |     |   |
+| Inherited set [0000000000000000] | |<----+   |
+| Ambient set   [0000000000000000]→+ |<--------+
++------------------------------------+
+```
+
+00000000 00000000 = 2 bytes, 16 bits
+So these are used as a bit pattern, and there are macros available for the
+values (which can be found in /usr/include/linux/capability.h), for example
+CAP_NET_BIND_SERVICE is defined as:
+```c
+#define CAP_NET_BIND_SERVICE 10
+```
+Now if one would like to check if a set contains one of the macros it would
+be easy to think that it is just a matter of using & to find out. But this is
+not the case and one has to use CAP_TO_MASK(CAP_NET_BIND_SERVICE) to get the
+correct value before using AND.
+See example in [cap.c](./cap.c).
 
 
+If you have a hex value and want fo find the cababilities for them one can
+use `capsh`:
+```console
+$ capsh --decode=0000000000000400
+0x0000000000000400=cap_net_bind_service
+```
+
+
+
+Where are capabilities actually checked in the kernel? (TODO)
+
+[process.c](http://lxr.linux.no/linux+v2.6.37/arch/x86/kernel/process.c#L304):
+```c
+long sys_execve(const char __user *name,
+                 const char __user *const __user *argv,
+                 const char __user *const __user *envp, struct pt_regs *regs)
+{
+  long error;
+  char *filename;
+ 
+  filename = getname(name);
+  error = PTR_ERR(filename);
+  if (IS_ERR(filename))
+    return error;
+
+  error = do_execve(filename, argv, envp, regs);
+ 
+#ifdef CONFIG_X86_32
+  if (error == 0) {
+    /* Make sure we don't return using sysenter.. */
+    set_thread_flag(TIF_IRET);
+  }
+#endif
+
+ putname(filename);
+ return error;
+}
+```
+
+
+#### install libcap
+```console
+$ sudo yum install libcap-devel
+```
