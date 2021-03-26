@@ -1,6 +1,8 @@
 auxv: auxv.c
-	#${CC} -lcap -o $@ $<
 	${CC} -g -o $@ $<
 
-cap: cap.c
+cap-sta: cap.c
+	${CC} -o $@ $< -Wl,-Bstatic -lcap -Wl,-Bdynamic
+
+cap-dyn: cap.c
 	${CC} -lcap -g -o $@ $<
