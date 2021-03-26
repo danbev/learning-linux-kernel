@@ -2942,6 +2942,11 @@ CAP_TO_MASK(CAP_NET_BIND_SERVICE): 0000000000000400
 Has CAP_NET_BIND_SERVICE: 0000000000000400
 ```
 
+Remove capabilities:
+```console
+$ sudo setcap -r /path/to/file
+```
+
 If you have a hex value and want fo find the cababilities for them one can
 use `capsh`:
 ```console
@@ -2986,3 +2991,16 @@ long sys_execve(const char __user *name,
 ```console
 $ sudo yum install libcap-devel
 ```
+This can be dynamically linked with an executable using `lcap` but this might
+not always be desirabe as it requires that the system has this shared library.
+
+Another option is to use a static library, libcap.a:
+```console
+$ sudo dnf install libcap-static
+```
+And in this case we can specify that this library should be linked statically
+and not dynmically as the rest (libc.so etc):
+```console
+ ${CC} -o $@ $< -Wl,-Bstatic -lcap -Wl,-Bdynamic
+```
+
