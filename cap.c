@@ -3,6 +3,31 @@
 #include <stdlib.h>
 #include <sys/capability.h>
 
+int HasOnly(cap_value_t capability) {
+
+  cap_t cap = cap_get_proc();
+  if (cap == NULL) {
+    return 0;
+  }
+
+  // Create a cap_t and set the capability passed in.
+  cap_t cap_cmp = cap_init();
+  if (cap_cmp == NULL) {
+    cap_free(cap);
+    return 0;
+  }
+  cap_value_t cap_list[] = { capability };
+  cap_set_flag(cap_cmp, CAP_EFFECTIVE, 1, cap_list, CAP_SET);
+  cap_set_flag(cap_cmp, CAP_PERMITTED, 1, cap_list, CAP_SET);
+  // Compare this to the process's effective capabilities
+  int ret = cap_compare(cap, cap_cmp) == 0;
+
+  cap_free(cap);
+  cap_free(cap_cmp);
+
+  return ret;
+}
+
 int main(int argc, char** argv, char** environ) {
   /* Example of using caplib
   cap_t caps;

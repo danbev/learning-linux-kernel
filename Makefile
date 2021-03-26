@@ -3,4 +3,4 @@ auxv: auxv.c
 	${CC} -g -o $@ $<
 
 cap: cap.c
-	${CC} -g -o $@ $<
+	${CC} -lcap -g -o $@ $<
