@@ -2,7 +2,7 @@ auxv: auxv.c
 	${CC} -g -o $@ $<
 
 cap-sta: cap.c
-	${CC} -o $@ $< -Wl,-Bstatic -lcap -Wl,-Bdynamic
+	${CC} -o $@ -Wl,-Bstatic -Wl,--whole-archive -lcap -Wl,--no-whole-archive -Wl,-Bdynamic $<
 
 cap-dyn: cap.c
 	${CC} -lcap -g -o $@ $<
