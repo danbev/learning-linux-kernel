@@ -20,6 +20,8 @@ int HasOnly(cap_value_t capability) {
   cap_set_flag(cap_cmp, CAP_EFFECTIVE, 1, cap_list, CAP_SET);
   cap_set_flag(cap_cmp, CAP_PERMITTED, 1, cap_list, CAP_SET);
   // Compare this to the process's effective capabilities
+  printf("cap: %s\n", cap_to_text(cap, NULL));
+  printf("cap_cmp: %s\n", cap_to_text(cap_cmp, NULL));
   int ret = cap_compare(cap, cap_cmp) == 0;
 
   cap_free(cap);
