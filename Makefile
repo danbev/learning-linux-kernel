@@ -8,4 +8,4 @@ cap-dyn: cap.c
 	${CC} -lcap -g -o $@ $<
 
 getcap: getcap.c
-	${CC} -g -o $@ $<
+	${CC} -Wall -Werror=sign-compare -g -o $@ $<
