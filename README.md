@@ -2888,12 +2888,12 @@ Where introduced to give more fine grained control to processes that need to
 have higher permissions without having to be setuid.
 So setuid can be set using `chmod u+s` on a binary will make that the effective
 user of when a process starts and the executable object file is loaded into
-memory an executed. This is an all or nothing thing, we get all the permissions
+memory and executed. This is an all or nothing thing, we get all the permissions
 or none.
 
-Remember that when a new process is to be created the `fork` call be called
-which will make a copy of the current process. During this process the
-capabilities will be copied. Normally `excecve` will be called which will
+Remember that when a new process is to be created `fork` is called
+which will make a copy of the current process. During this process of forking
+the capabilities will be copied. Normally `execve` will be called which will
 replace the copied process (the address spaces) with the image read from the
 executable object file. If the binary has the setuid set all permitted and
 effective capabilities are enabled.
@@ -3004,3 +3004,6 @@ and not dynmically as the rest (libc.so etc):
  ${CC} -o $@ $< -Wl,-Bstatic -lcap -Wl,-Bdynamic
 ```
 
+One thing to note is about the order here, notice in the above case we have
+the source, $<, before the libraries. But if we don't do that the linker will
+not include the symbols as they are not used by anything.
