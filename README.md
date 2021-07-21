@@ -2916,6 +2916,8 @@ effective capabilities are enabled.
 | Ambient set   [0000000000000000]→+ |<--------+
 +------------------------------------+
 ```
+The `Effective set` is the set that is checked by the kernel to allow or deny
+system calls.
 
 00000000 00000000 = 2 bytes, 16 bits
 So these are used as a bit pattern, and there are macros available for the
