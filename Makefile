@@ -6,3 +6,6 @@ cap-sta: cap.c
 
 cap-dyn: cap.c
 	${CC} -lcap -g -o $@ $<
+
+getcap: getcap.c
+	${CC} -g -o $@ $<
