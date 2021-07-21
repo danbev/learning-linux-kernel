@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <sys/capability.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include <stdlib.h> // exit()
+#include <unistd.h> // getpid()
 
 /*
  * $ sudo setcap cap_net_bind_service+ep ./getcap
@@ -20,7 +20,8 @@ int main(int argc, char** argv) {
   printf("Permitted set: %016llx \n", cap_data.permitted);
   printf("Inherited set: %016llx \n", cap_data.inheritable);
 
-  printf("CAP_TO_MASK(CAP_NET_BIND_SERVICE): %016x\n", CAP_TO_MASK(CAP_NET_BIND_SERVICE));
+  cap_value_t net_bind =CAP_TO_MASK(CAP_NET_BIND_SERVICE);
+  printf("CAP_TO_MASK(CAP_NET_BIND_SERVICE): %016x\n", net_bind);
 
   int has_cap_net_bind_service = cap_data.effective & CAP_TO_MASK(CAP_NET_BIND_SERVICE);
   if (has_cap_net_bind_service != 0) {
