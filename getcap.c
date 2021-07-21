@@ -4,7 +4,7 @@
 #include <unistd.h>
 
 /*
- * $ sudo setcap cap_net_broadcast,cap_net_bind_service+ep ./getcap
+ * $ sudo setcap cap_net_bind_service+ep ./getcap
  * $ getcap ./getcap
  * ./getcap = cap_net_bind_service,cap_net_broadcast+ep
  */
@@ -19,5 +19,21 @@ int main(int argc, char** argv) {
   printf("Effective set: %016llx \n", cap_data.effective);
   printf("Permitted set: %016llx \n", cap_data.permitted);
   printf("Inherited set: %016llx \n", cap_data.inheritable);
+
+  printf("CAP_TO_MASK(CAP_NET_BIND_SERVICE): %016x\n", CAP_TO_MASK(CAP_NET_BIND_SERVICE));
+
+  int has_cap_net_bind_service = cap_data.effective & CAP_TO_MASK(CAP_NET_BIND_SERVICE);
+  if (has_cap_net_bind_service != 0) {
+    printf("Has CAP_NET_BIND_SERVICE: %016llx\n", has_cap_net_bind_service);
+  } else {
+    printf("Does not have CAP_NET_BIND_SERVICE\n");
+  }
+
+  int has_cap_net_broadcast = cap_data.effective & CAP_TO_MASK(CAP_NET_BROADCAST);
+  if (has_cap_net_broadcast != 0) {
+    printf("Has CAP_NET_BROADCAST: %016llx\n", has_cap_net_broadcast);
+  } else {
+    printf("Does not have CAP_NET_BROADCAST\n");
+  }
   return 0;
 }
