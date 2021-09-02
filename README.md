@@ -2933,9 +2933,9 @@ correct value before using AND.
 See example in [cap.c](./cap.c).
 ```console
 $ make cap
-$ sudo setcap cap_net_broadcast,cap_net_bind_service+ep ./cap
+$ sudo setcap cap_net_broadcast,cap_net_bind_service+p ./cap
 $ getcap ./cap
-./cap = cap_net_bind_service,cap_net_broadcast+ep
+./cap = cap_net_bind_service,cap_net_broadcast+p
 $ ./cap 
 Effective set: 0000000000000c00 
 Permitted set: 0000000000000c00 
@@ -2943,6 +2943,13 @@ Inherited set: 0000000000000000
 CAP_TO_MASK(CAP_NET_BIND_SERVICE): 0000000000000400
 Has CAP_NET_BIND_SERVICE: 0000000000000400
 ```
+One thing to note here is that while the kernel checks the `Effective Set` an
+executable would normally be set to have a permitted capability, that is using
++p and not +ep. The executable itself must be capabilities aware and will set
+the capability it needs before executing a syscall. For example to bind to a
+socket it would do so setting the effective set and that would only work if that
+option is in the permitted set. After the call the program will unset the
+effective set.
 
 Remove capabilities:
 ```console
