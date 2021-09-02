@@ -9,3 +9,6 @@ cap-dyn: cap.c
 
 getcap: getcap.c
 	${CC} -Wall -Werror=sign-compare -g -o $@ $<
+
+getcap_syscall: getcap_syscall.c
+	${CC} -Wall -Werror=sign-compare -g -o $@ $<
