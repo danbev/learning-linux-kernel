@@ -13,3 +13,4 @@ auxv
 cap-dyn
 cap-sta
 getcap
+getcap_syscall

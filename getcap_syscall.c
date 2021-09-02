@@ -19,7 +19,7 @@ int main(int argc, char** argv) {
   }
 
   if (cap_data[0].permitted == (unsigned int)(CAP_TO_MASK(capability)) ||
-      cap_data[0].permitted == (unsigned int)(CAP_TO_MASK(capability))) {
+      cap_data[1].permitted == (unsigned int)(CAP_TO_MASK(capability))) {
     printf("Has CAP_NET_BIND_SERVICE in permitted set\n");
   } else {
     printf("Does not have CAP_NET_BIND_SERVICE in permitted set\n");
