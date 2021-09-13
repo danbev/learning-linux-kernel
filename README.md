@@ -558,6 +558,30 @@ Disassembly of section .text:
   40104b:	0f 1f 44 00 00       	nopl   0x0(%rax,%rax,1)
 ```
 Notice that our start address is for the `_start_` label (and not our main function).
+
+So where is _start defined?  
+It can be found in `./glibc/sysdeps/x86_64/start.S`:
+```assembly
+%rdx         Contains a function pointer to be registered with `atexit'.
+             This is how the dynamic linker arranges to have DT_FINI
+             functions called for shared libraries that have been loaded
+             before this code runs.
+
+%rsp         The stack contains the arguments and environment:
+             0(%rsp)                         argc
+             LP_SIZE(%rsp)                   argv[0]
+             ...
+             (LP_SIZE*argc)(%rsp)            NULL
+             (LP_SIZE*(argc+1))(%rsp)        envp[0]
+             ...
+                                             NULL
+ENTRY (_start)
+  ...
+  call *__libc_start_main@GOTPCREL(%rip)
+```
+The `ENTRY` directive is what is setting the entry point for the program which
+is the same thing as passing the entry point to the linker using `-e _start`.
+
 The first instruction, `xor %ebp, %ebp` is just clearing the %ebp register (setting
 it to zero):
 ```
@@ -578,54 +602,61 @@ passing parameters are this following:
 ```
 Also remember that `objdump` by default outputs assembly in AT&T syntax so the first
 operand in the instructions above is the source and the second is the destination.
+
+So we are moving the current value in rdx into r9, which we know can be used
+as argument (nr 6) of a function call. This should be the shared library
+termination function (if there is one):
 ```console
   401022:	49 89 d1             	mov    %rdx,%r9
 ```
-So we are moving the current value in rdx into r9, which we know can be used
-as argument (nr 6) of a function call.
+Next we are popping the top-most value off the stack, which is `argc`, and
+saving it in register rsi (which is the second argument of `__libc_start_main`:
 ```console
   401025:	5e                   	pop    %rsi
 ```
-This operation will take the topmost value of the stack and store it in rsi (second argument).
+
+Next, since we popped argc off the stack, the next value on the stack is argv
+and this is stored in register rdx, the third argument to `__libc_start_main`:
 ```console
   401026:	48 89 e2             	mov    %rsp,%rdx
 ```
-We now move the current stack pointer into rdx (third argument).
+
+The next instruction is aligning the stack on a 16-byte boundry:
 ```console
   401029:	48 83 e4 f0          	and    $0xfffffffffffffff0,%rsp
   40102d:	50                   	push   %rax
+```
+Next we push the value of the stackpointer onto the stack:
+```console
+```
   40102e:	54                   	push   %rsp
 ```
-```console
-  40102f:	49 c7 c0 80 11 40 00 	mov    $0x401180,%r8
-```
-So this is moving the value `0x401180` into r8 (the fifth argument).
+So this is moving the value `0x401180` into r8 (the fifth argument fini).
 This is `__libc_csu_fini`:
 ```console
+  40102f:	49 c7 c0 80 11 40 00 	mov    $0x401180,%r8
+
 0000000000401180 <__libc_csu_fini>:
   401180:	c3                   	retq
+
 ```
 Next, we have 
+Which is moving the value `0x401120` into rcx which is the fourth argument init:
 ```console
   401036:	48 c7 c1 20 11 40 00 	mov    $0x401120,%rcx
-```
-Which is moving the value `0x401120` into rcx which is the fourth argument.
-This is 
-```console
+
 0000000000401120 <__libc_csu_init>:
-...
 ```
-Next we have:
+Next we are moving the value `0x401102` into rdi (the first argument main):
 ```console
   40103d:	48 c7 c7 02 11 40 00 	mov    $0x401102,%rdi
-```
-Which is moving the value `0x401102` into rdi (the first argument):
-```console
+
 0000000000401102 <main>:
-...
 ```
-So all of that was setting up the arguments to call [__libc_start_main](https://sourceware.org/git/?p=glibc.git;a=blob;f=csu/libc-start.c;h=12468c5a89e24d47872a2aea5dbe0e7287cca527;hb=HEAD#l111) which
-has a signture of:
+
+So all of that was setting up the arguments to call
+[__libc_start_main](https://sourceware.org/git/?p=glibc.git;a=blob;f=csu/libc-start.c;h=12468c5a89e24d47872a2aea5dbe0e7287cca527;hb=HEAD#l111)
+which has a signture of:
 ```console
 int __libc_start_main(int *(main) (int, char * *, char * *),
                       int argc,
@@ -635,7 +666,6 @@ int __libc_start_main(int *(main) (int, char * *, char * *),
                       void (*rtld_fini) (void),
                       void (* stack_end));
 ```
-
 The actual call look like this:
 ```console
   401044:	ff 15 a6 2f 00 00    	callq  *0x2fa6(%rip)        # 403ff0 <__libc_start_main@GLIBC_2.2.5>
@@ -650,18 +680,114 @@ current instruction pointer, which could then be used by the caller.
 The `*` means that this is an absolute jump call (not a relative one). 
 TODO: double check the above as I'm a little unsure about this.
 
-So we have
-```console
-  401044:	ff 15 a6 2f 00 00    	callq  *0x2fa6(%rip)        # 403ff0 <__libc_start_main@GLIBC_2.2.5>
-```
 
-`__libc_start_main` will do some things that I've not had time to look into
-but it will call our main function:
+`__libc_start_main` can be found in `glibc/csu/libc-start.c`
 ```c
-result = main(argc, argv, __environ MAIN_AUXVEC_PARAM);
-...
-exit(result);
+# define LIBC_START_MAIN __libc_start_main
+
+STATIC int                                                                      
+LIBC_START_MAIN (int (*main) (int, char **, char ** MAIN_AUXVEC_DECL),          
+                 int argc, char **argv,                                         
+#ifdef LIBC_START_MAIN_AUXVEC_ARG                                               
+                 ElfW(auxv_t) *auxvec,                                          
+#endif                                                                          
+                 __typeof (main) init,                                          
+                 void (*fini) (void),                                           
+                 void (*rtld_fini) (void), void *stack_end) {
+  /* Result of the 'main' function.  */                                         
+  int result;
+  ...
+
+  /* Store the lowest stack address.  This is done in ld.so if this is          
+     the code for the DSO.  */                                                  
+  __libc_stack_end = stack_end;
+
+   /* Set up the stack checker's canary.  */                                     
+  uintptr_t stack_chk_guard = _dl_setup_stack_chk_guard (_dl_random);           
+# ifdef THREAD_SET_STACK_GUARD                                                  
+  THREAD_SET_STACK_GUARD (stack_chk_guard);                                     
+# else                                                                          
+  __stack_chk_guard = stack_chk_guard;                                          
+# endif       
+  ...
+
+  /* Register the destructor of the dynamic linker if there is any.  */         
+  if (__glibc_likely (rtld_fini != NULL))                                       
+    __cxa_atexit ((void (*) (void *)) rtld_fini, NULL, NULL);
+  ...
+  /* Register the destructor of the program, if any.  */                        
+  if (fini)                                                                     
+    __cxa_atexit ((void (*) (void *)) fini, NULL, NULL);
+  ...
+  
+  if (init)                                                                     
+    (*init) (argc, argv, __environ MAIN_AUXVEC_PARAM); 
+  ...
+
+#ifdef HAVE_CLEANUP_JMP_BUF
+  /* Memory for the cancellation buffer.  */                                    
+  struct pthread_unwind_buf unwind_buf;                                         
+                                                                                
+  int not_first_call;                                                           
+  not_first_call = setjmp ((struct __jmp_buf_tag *) unwind_buf.cancel_jmp_buf); 
+  if (__glibc_likely (! not_first_call))                                        
+    {                                                                           
+      struct pthread *self = THREAD_SELF;                                       
+                                                                                
+      /* Store old info.  */                                                    
+      unwind_buf.priv.data.prev = THREAD_GETMEM (self, cleanup_jmp_buf);        
+      unwind_buf.priv.data.cleanup = THREAD_GETMEM (self, cleanup);             
+                                                                                
+      /* Store the new cleanup handler info.  */                                
+      THREAD_SETMEM (self, cleanup_jmp_buf, &unwind_buf);                       
+                                                                                
+      /* Run the program.  */                                                   
+      result = main (argc, argv, __environ MAIN_AUXVEC_PARAM);                  
+    }                                                         
+   else                                                                          
+    {                                                                           
+      /* Remove the thread-local data.  */                                      
+# ifdef SHARED                                                                  
+      PTHFCT_CALL (ptr__nptl_deallocate_tsd, ());                               
+# else                                                                          
+      extern void __nptl_deallocate_tsd (void) __attribute ((weak));            
+      __nptl_deallocate_tsd ();                                                 
+# endif                                                                         
+                                                                                
+      /* One less thread.  Decrement the counter.  If it is zero we             
+         terminate the entire process.  */                                      
+      result = 0;                                                               
+# ifdef SHARED                                                                  
+      unsigned int *ptr = __libc_pthread_functions.ptr_nthreads;                
+#  ifdef PTR_DEMANGLE                                                           
+      PTR_DEMANGLE (ptr);                                                       
+#  endif                                                                        
+# else                                                                          
+      extern unsigned int __nptl_nthreads __attribute ((weak));                 
+      unsigned int *const ptr = &__nptl_nthreads;                               
+# endif                                                                         
+                                                                                
+      if (! atomic_decrement_and_test (ptr))                                    
+        /* Not much left to do but to exit the thread, not the process.  */     
+        __exit_thread ();                                                       
+    }                                                                           
+#else  // HAVE_CLEANUP_JMP_BUF                                                                           
+  /* Nothing fancy, just call the function.  */                                 
+  result = main (argc, argv, __environ MAIN_AUXVEC_PARAM);                      
+#endif                                                                          
+                                                                                
+  exit (result);                
 ```
+There are a number of things that are of interest here. We can see that the
+dynamic libary descructor function and fini are set using __cxa_atexit.
+And we can see that init is called directly which makes sence. 
+Also notice that `setjmp` is used to setup up the longjmp calls which allow
+for returning to this poing using `longjmp` and is a way to unwind the stack
+to this point and allow for clean up to take place. The first time `setjmp` is
+called it will return 0 and enter the first if code block and run the main
+function. And if `longjmp` was called the else clause will be taken and the
+clean up performed and `__exit_thread()` called. This example might help to
+clarify the setjmp/longjmp [longjmp.c](https://github.com/danbev/learning-c/blob/master/longjmp.c).
 
 ```console
 $ readelf -W --sections simple
